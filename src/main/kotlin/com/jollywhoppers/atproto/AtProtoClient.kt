@@ -159,7 +159,7 @@ class AtProtoClient(
      */
     suspend fun resolveDid(did: String): Result<DidDocument> = runCatching {
         logger.info("Resolving DID: $did")
-        
+
         val url = when {
             did.startsWith("did:plc:") -> {
                 val identifier = did.removePrefix("did:plc:")
@@ -167,6 +167,15 @@ class AtProtoClient(
             }
             did.startsWith("did:web:") -> {
                 val domain = did.removePrefix("did:web:")
+
+                // Validate domain format (no IPs, only valid hostnames)
+                if (!domain.matches(Regex("^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"))) {
+                    throw IllegalArgumentException("Invalid did:web domain format: must be a valid hostname")
+                }
+
+                // Block private IP ranges and localhost
+                validateNotPrivateNetwork(domain)
+
                 "https://$domain/.well-known/did.json"
             }
             else -> throw IllegalArgumentException("Unsupported DID method: $did")
@@ -363,7 +372,41 @@ class AtProtoClient(
                         ?: throw Exception("No handle found in DID document")
                     val pdsService = didDoc.service.firstOrNull { it.type == "AtprotoPersonalDataServer" }
                         ?: throw Exception("No PDS service found in DID document")
-                    Triple(identifier, handle, pdsService.serviceEndpoint)
+
+                    // Validate serviceEndpoint per AT Protocol spec
+                    val serviceEndpoint = pdsService.serviceEndpoint
+                    val uri = try {
+                        URI.create(serviceEndpoint)
+                    } catch (e: Exception) {
+                        throw Exception("Invalid serviceEndpoint URI: ${e.message}")
+                    }
+
+                    // Validate per AT Protocol spec
+                    require(uri.scheme in listOf("http", "https")) {
+                        "serviceEndpoint must use HTTP or HTTPS scheme, got: ${uri.scheme}"
+                    }
+                    require(uri.host != null) {
+                        "serviceEndpoint must have a valid host"
+                    }
+                    require(uri.path.isNullOrEmpty() || uri.path == "/") {
+                        "serviceEndpoint must not contain path, got: ${uri.path}"
+                    }
+                    require(uri.query == null) {
+                        "serviceEndpoint must not contain query parameters"
+                    }
+                    require(uri.fragment == null) {
+                        "serviceEndpoint must not contain fragment"
+                    }
+                    require(uri.userInfo == null) {
+                        "serviceEndpoint must not contain userinfo"
+                    }
+
+                    // Block private IP ranges
+                    validateNotPrivateNetwork(uri.host)
+
+                    // Reconstruct clean URL
+                    val cleanPdsUrl = "${uri.scheme}://${uri.host}${uri.port.takeIf { it != -1 }?.let { ":$it" } ?: ""}"
+                    Triple(identifier, handle, cleanPdsUrl)
                 }
             }
             else -> {
@@ -381,5 +424,27 @@ class AtProtoClient(
             .resolve(value)
             .rawSchemeSpecificPart
             .replace("+", "%20")
+    }
+
+    /**
+     * Validates that a hostname or domain is not a private network address.
+     * Throws IllegalArgumentException if the address is localhost or a private IP range.
+     */
+    private fun validateNotPrivateNetwork(host: String) {
+        val blockedPatterns = listOf(
+            Regex("^localhost$", RegexOption.IGNORE_CASE),
+            Regex("^127\\."),
+            Regex("^10\\."),
+            Regex("^172\\.(1[6-9]|2[0-9]|3[01])\\."),
+            Regex("^192\\.168\\."),
+            Regex("^169\\.254\\."),
+            Regex("^::1$"),
+            Regex("^fc00:"),
+            Regex("^fe80:")
+        )
+
+        if (blockedPatterns.any { it.containsMatchIn(host) }) {
+            throw IllegalArgumentException("Access to private networks is not allowed: $host")
+        }
     }
 }
