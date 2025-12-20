@@ -4,6 +4,8 @@ import com.jollywhoppers.atproto.AtProtoSessionManager
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.encodeToJsonElement
 import java.util.*
 
 /**
@@ -49,7 +51,7 @@ class RecordCreationExample(
         val requestBody = CreateRecordRequest(
             repo = session.did,
             collection = "com.jollywhoppers.minecraft.player.stats",
-            record = record
+            record = json.encodeToJsonElement(record)
         )
 
         val response = sessionManager.makeAuthenticatedRequest(
@@ -91,7 +93,7 @@ class RecordCreationExample(
             repo = session.did,
             collection = "com.jollywhoppers.minecraft.player.profile",
             rkey = "self",
-            record = record
+            record = json.encodeToJsonElement(record)
         )
 
         sessionManager.makeAuthenticatedRequest(
@@ -136,7 +138,7 @@ class RecordCreationExample(
         val requestBody = CreateRecordRequest(
             repo = session.did,
             collection = "com.jollywhoppers.minecraft.achievement",
-            record = record
+            record = json.encodeToJsonElement(record)
         )
 
         sessionManager.makeAuthenticatedRequest(
@@ -210,7 +212,7 @@ class RecordCreationExample(
     data class CreateRecordRequest(
         val repo: String,
         val collection: String,
-        val record: Any
+        val record: JsonElement
     )
 
     @Serializable
@@ -218,7 +220,7 @@ class RecordCreationExample(
         val repo: String,
         val collection: String,
         val rkey: String,
-        val record: Any
+        val record: JsonElement
     )
 }
 
