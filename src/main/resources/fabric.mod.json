@@ -1,0 +1,45 @@
+{
+	"schemaVersion": 1,
+	"id": "atproto-connect",
+	"version": "${version}",
+	"name": "atproto-connect",
+	"description": "This is an example description! Tell everyone what your mod is about!",
+	"authors": [
+		"Me!"
+	],
+	"contact": {
+		"homepage": "https://fabricmc.net/",
+		"sources": "https://github.com/FabricMC/fabric-example-mod"
+	},
+	"license": "CC0-1.0",
+	"icon": "assets/atproto-connect/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			{
+				"value": "com.jollywhoppers.Atprotoconnect",
+				"adapter": "kotlin"
+			}
+		],
+		"client": [
+			{
+				"value": "com.jollywhoppers.AtprotoconnectClient",
+				"adapter": "kotlin"
+			}
+		]
+	},
+	"mixins": [
+		"atproto-connect.mixins.json",
+		{
+			"config": "atproto-connect.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.18.3",
+		"minecraft": "~1.21.10",
+		"java": ">=21",
+		"fabric-api": "*",
+		"fabric-language-kotlin": "*"
+	}
+}
