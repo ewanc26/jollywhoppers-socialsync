@@ -1,0 +1,82 @@
+{
+  "lexicon": 1,
+  "id": "com.jollywhoppers.minecraft.server.status",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "Minecraft server status snapshot. Can be used for server discovery and monitoring.",
+      "key": "literal:self",
+      "record": {
+        "type": "object",
+        "required": ["server", "version", "updatedAt"],
+        "properties": {
+          "server": {
+            "type": "ref",
+            "ref": "com.jollywhoppers.minecraft.defs#serverReference",
+            "description": "Server information"
+          },
+          "version": {
+            "type": "string",
+            "description": "Minecraft server version",
+            "maxLength": 64
+          },
+          "protocolVersion": {
+            "type": "integer",
+            "description": "Minecraft protocol version number"
+          },
+          "maxPlayers": {
+            "type": "integer",
+            "description": "Maximum player capacity",
+            "minimum": 0
+          },
+          "onlinePlayers": {
+            "type": "integer",
+            "description": "Current number of online players",
+            "minimum": 0
+          },
+          "playerSample": {
+            "type": "array",
+            "description": "Sample of online players",
+            "items": {
+              "type": "ref",
+              "ref": "com.jollywhoppers.minecraft.defs#playerReference"
+            },
+            "maxLength": 100
+          },
+          "motd": {
+            "type": "string",
+            "description": "Server message of the day",
+            "maxLength": 500,
+            "maxGraphemes": 100
+          },
+          "gameMode": {
+            "type": "string",
+            "description": "Primary game mode",
+            "maxLength": 64
+          },
+          "difficulty": {
+            "type": "string",
+            "description": "Server difficulty",
+            "enum": ["peaceful", "easy", "normal", "hard"],
+            "default": "normal"
+          },
+          "hardcore": {
+            "type": "boolean",
+            "description": "Whether hardcore mode is enabled",
+            "default": false
+          },
+          "pvpEnabled": {
+            "type": "boolean",
+            "description": "Whether PvP is enabled",
+            "default": true
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "When this status was recorded"
+          }
+        }
+      }
+    }
+  }
+}

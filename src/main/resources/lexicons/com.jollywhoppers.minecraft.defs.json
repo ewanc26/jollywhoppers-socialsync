@@ -1,0 +1,66 @@
+{
+  "lexicon": 1,
+  "id": "com.jollywhoppers.minecraft.defs",
+  "defs": {
+    "playerReference": {
+      "type": "object",
+      "description": "Reference to a Minecraft player",
+      "required": ["uuid", "username"],
+      "properties": {
+        "uuid": {
+          "type": "string",
+          "description": "Player's Minecraft UUID",
+          "maxLength": 36
+        },
+        "username": {
+          "type": "string",
+          "description": "Player's Minecraft username",
+          "maxLength": 16
+        }
+      }
+    },
+    "serverReference": {
+      "type": "object",
+      "description": "Reference to a Minecraft server",
+      "required": ["serverId", "serverName"],
+      "properties": {
+        "serverId": {
+          "type": "string",
+          "description": "Unique server identifier",
+          "maxLength": 128
+        },
+        "serverName": {
+          "type": "string",
+          "description": "Human-readable server name",
+          "maxLength": 256
+        },
+        "serverAddress": {
+          "type": "string",
+          "description": "Server address (optional)",
+          "maxLength": 512
+        }
+      }
+    },
+    "statistic": {
+      "type": "object",
+      "description": "A single statistic entry",
+      "required": ["key", "value"],
+      "properties": {
+        "key": {
+          "type": "string",
+          "description": "Statistic identifier (e.g., 'minecraft:mined', 'minecraft:killed')",
+          "maxLength": 256
+        },
+        "value": {
+          "type": "integer",
+          "description": "Statistic value"
+        },
+        "category": {
+          "type": "string",
+          "description": "Category of statistic (e.g., 'mined', 'killed', 'used', 'broken')",
+          "maxLength": 64
+        }
+      }
+    }
+  }
+}

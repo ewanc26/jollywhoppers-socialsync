@@ -1,0 +1,47 @@
+{
+  "lexicon": 1,
+  "id": "com.jollywhoppers.minecraft.player.session",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A single Minecraft play session. Tracks when a player joined and left a server.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["player", "joinedAt"],
+        "properties": {
+          "player": {
+            "type": "ref",
+            "ref": "com.jollywhoppers.minecraft.defs#playerReference",
+            "description": "Player who had this session"
+          },
+          "server": {
+            "type": "ref",
+            "ref": "com.jollywhoppers.minecraft.defs#serverReference",
+            "description": "Server where the session occurred"
+          },
+          "joinedAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "When the player joined the server"
+          },
+          "leftAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "When the player left the server (null if still online)"
+          },
+          "durationMinutes": {
+            "type": "integer",
+            "description": "Session duration in minutes",
+            "minimum": 0
+          },
+          "quitReason": {
+            "type": "string",
+            "description": "Reason for disconnection",
+            "maxLength": 256
+          }
+        }
+      }
+    }
+  }
+}

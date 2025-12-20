@@ -1,0 +1,62 @@
+{
+  "lexicon": 1,
+  "id": "com.jollywhoppers.minecraft.player.stats",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "Player statistics snapshot from Minecraft. Suitable for leaderboards and cross-server tracking.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["player", "statistics", "syncedAt"],
+        "properties": {
+          "player": {
+            "type": "ref",
+            "ref": "com.jollywhoppers.minecraft.defs#playerReference",
+            "description": "Player this stat snapshot belongs to"
+          },
+          "server": {
+            "type": "ref",
+            "ref": "com.jollywhoppers.minecraft.defs#serverReference",
+            "description": "Server where these stats were recorded"
+          },
+          "statistics": {
+            "type": "array",
+            "description": "Array of player statistics",
+            "items": {
+              "type": "ref",
+              "ref": "com.jollywhoppers.minecraft.defs#statistic"
+            },
+            "maxLength": 1000
+          },
+          "playtimeMinutes": {
+            "type": "integer",
+            "description": "Total playtime in minutes",
+            "minimum": 0
+          },
+          "level": {
+            "type": "integer",
+            "description": "Player experience level",
+            "minimum": 0
+          },
+          "gamemode": {
+            "type": "string",
+            "description": "Current gamemode",
+            "enum": ["survival", "creative", "adventure", "spectator"],
+            "default": "survival"
+          },
+          "dimension": {
+            "type": "string",
+            "description": "Current dimension",
+            "maxLength": 256
+          },
+          "syncedAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "When these stats were synced to AT Protocol"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "lexicon": 1,
+  "id": "com.jollywhoppers.minecraft.achievement",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "Achievement or advancement earned by a player in Minecraft.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["player", "achievementId", "achievedAt"],
+        "properties": {
+          "player": {
+            "type": "ref",
+            "ref": "com.jollywhoppers.minecraft.defs#playerReference",
+            "description": "Player who earned the achievement"
+          },
+          "server": {
+            "type": "ref",
+            "ref": "com.jollywhoppers.minecraft.defs#serverReference",
+            "description": "Server where the achievement was earned"
+          },
+          "achievementId": {
+            "type": "string",
+            "description": "Achievement identifier (e.g., 'minecraft:story/mine_diamond')",
+            "maxLength": 256
+          },
+          "achievementName": {
+            "type": "string",
+            "description": "Human-readable achievement name",
+            "maxLength": 256
+          },
+          "achievementDescription": {
+            "type": "string",
+            "description": "Achievement description",
+            "maxLength": 1000
+          },
+          "achievedAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "When the achievement was earned"
+          },
+          "category": {
+            "type": "string",
+            "description": "Achievement category (e.g., 'story', 'nether', 'end', 'adventure', 'husbandry')",
+            "maxLength": 64
+          },
+          "isChallenge": {
+            "type": "boolean",
+            "description": "Whether this is a challenge advancement",
+            "default": false
+          }
+        }
+      }
+    }
+  }
+}

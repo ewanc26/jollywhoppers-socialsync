@@ -1,0 +1,64 @@
+{
+  "lexicon": 1,
+  "id": "com.jollywhoppers.minecraft.player.profile",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "Links a Minecraft player identity to an AT Protocol account. This is the primary identity record.",
+      "key": "literal:self",
+      "record": {
+        "type": "object",
+        "required": ["player", "createdAt"],
+        "properties": {
+          "player": {
+            "type": "ref",
+            "ref": "com.jollywhoppers.minecraft.defs#playerReference",
+            "description": "Minecraft player identity"
+          },
+          "displayName": {
+            "type": "string",
+            "description": "Display name for the player",
+            "maxLength": 128,
+            "maxGraphemes": 64
+          },
+          "bio": {
+            "type": "string",
+            "description": "Player bio or description",
+            "maxLength": 2560,
+            "maxGraphemes": 256
+          },
+          "primaryServer": {
+            "type": "ref",
+            "ref": "com.jollywhoppers.minecraft.defs#serverReference",
+            "description": "Player's primary/home server"
+          },
+          "favoriteGameMode": {
+            "type": "string",
+            "description": "Preferred game mode",
+            "enum": ["survival", "creative", "adventure", "spectator"]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "When this profile was created"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "When this profile was last updated"
+          },
+          "publicStats": {
+            "type": "boolean",
+            "description": "Whether stats should be publicly visible",
+            "default": true
+          },
+          "publicSessions": {
+            "type": "boolean",
+            "description": "Whether play sessions should be publicly visible",
+            "default": true
+          }
+        }
+      }
+    }
+  }
+}

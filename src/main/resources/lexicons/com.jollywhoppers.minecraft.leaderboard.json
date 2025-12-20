@@ -1,0 +1,52 @@
+{
+  "lexicon": 1,
+  "id": "com.jollywhoppers.minecraft.leaderboard",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "Leaderboard entry for a specific statistic. Useful for displaying top players across servers.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["player", "statisticKey", "value", "updatedAt"],
+        "properties": {
+          "player": {
+            "type": "ref",
+            "ref": "com.jollywhoppers.minecraft.defs#playerReference",
+            "description": "Player on the leaderboard"
+          },
+          "server": {
+            "type": "ref",
+            "ref": "com.jollywhoppers.minecraft.defs#serverReference",
+            "description": "Server scope (omit for global leaderboard)"
+          },
+          "statisticKey": {
+            "type": "string",
+            "description": "The statistic being ranked (e.g., 'total_kills', 'diamonds_mined', 'playtime')",
+            "maxLength": 256
+          },
+          "value": {
+            "type": "integer",
+            "description": "The statistic value"
+          },
+          "rank": {
+            "type": "integer",
+            "description": "Player's rank for this statistic",
+            "minimum": 1
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "When this leaderboard entry was last updated"
+          },
+          "period": {
+            "type": "string",
+            "description": "Time period for leaderboard (e.g., 'all-time', 'monthly', 'weekly', 'daily')",
+            "enum": ["all-time", "yearly", "monthly", "weekly", "daily"],
+            "default": "all-time"
+          }
+        }
+      }
+    }
+  }
+}
