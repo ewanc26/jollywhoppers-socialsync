@@ -3,6 +3,7 @@ package com.jollywhoppers.atproto
 import com.jollywhoppers.atproto.security.SecurityUtils
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
+import kotlinx.serialization.serializer
 import org.slf4j.LoggerFactory
 import java.time.Instant
 import java.util.*
@@ -24,7 +25,7 @@ class RecordManager(
     private val sessionManager: AtProtoSessionManager
 ) {
     private val logger = LoggerFactory.getLogger("atproto-connect:RecordManager")
-    private val json = Json {
+    val json = Json {
         prettyPrint = false
         ignoreUnknownKeys = true
     }
@@ -77,13 +78,13 @@ class RecordManager(
      * Creates a typed record with automatic serialization.
      * Convenience method that handles JSON encoding.
      */
-    inline fun <reified T : @Serializable Any> createTypedRecord(
+    suspend inline fun <reified T> createTypedRecord(
         playerUuid: UUID,
         collection: String,
         record: T,
         validate: Boolean = true
     ): Result<StrongRef> = runCatching {
-        val jsonElement = json.encodeToJsonElement(record)
+        val jsonElement = json.encodeToJsonElement(serializer<T>(), record)
         createRecord(playerUuid, collection, jsonElement, validate).getOrThrow()
     }
 
@@ -137,7 +138,7 @@ class RecordManager(
     /**
      * Retrieves a typed record with automatic deserialization.
      */
-    suspend inline fun <reified T : @Serializable Any> getTypedRecord(
+    suspend inline fun <reified T> getTypedRecord(
         playerUuid: UUID,
         collection: String,
         rkey: String,
@@ -146,7 +147,7 @@ class RecordManager(
         val recordData = getRecord(playerUuid, collection, rkey, cid).getOrThrow()
         TypedRecordData(
             uri = recordData.uri,
-            value = json.decodeFromJsonElement(recordData.value),
+            value = json.decodeFromJsonElement(serializer<T>(), recordData.value),
             cid = recordData.cid
         )
     }
@@ -302,7 +303,7 @@ class RecordManager(
     /**
      * Updates a typed record with automatic serialization.
      */
-    suspend inline fun <reified T : @Serializable Any> putTypedRecord(
+    suspend inline fun <reified T> putTypedRecord(
         playerUuid: UUID,
         collection: String,
         rkey: String,
@@ -311,7 +312,7 @@ class RecordManager(
         swapCommit: String? = null,
         validate: Boolean = true
     ): Result<StrongRef> = runCatching {
-        val jsonElement = json.encodeToJsonElement(record)
+        val jsonElement = json.encodeToJsonElement(serializer<T>(), record)
         putRecord(playerUuid, collection, rkey, jsonElement, swapRecord, swapCommit, validate).getOrThrow()
     }
 

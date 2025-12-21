@@ -3,6 +3,7 @@ package com.jollywhoppers.atproto.examples
 import com.jollywhoppers.atproto.RecordManager
 import com.jollywhoppers.atproto.AtProtoSessionManager
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.serializer
 import org.slf4j.LoggerFactory
 import java.util.*
 
@@ -165,7 +166,7 @@ class RecordManagerExamples(
 
         val achievements = result.records.mapNotNull { recordData ->
             try {
-                kotlinx.serialization.json.Json.decodeFromJsonElement<Achievement>(recordData.value)
+                kotlinx.serialization.json.Json.decodeFromJsonElement(serializer<Achievement>(), recordData.value)
             } catch (e: Exception) {
                 logger.warn("Failed to parse achievement record", e)
                 null
@@ -189,7 +190,7 @@ class RecordManagerExamples(
 
         val stats = records.mapNotNull { recordData ->
             try {
-                kotlinx.serialization.json.Json.decodeFromJsonElement<PlayerStats>(recordData.value)
+                kotlinx.serialization.json.Json.decodeFromJsonElement(serializer<PlayerStats>(), recordData.value)
             } catch (e: Exception) {
                 logger.warn("Failed to parse stats record", e)
                 null
@@ -337,7 +338,7 @@ class RecordManagerExamples(
 
             RecordManager.WriteOperation.Create(
                 collection = "com.jollywhoppers.minecraft.achievement",
-                value = kotlinx.serialization.json.Json.encodeToJsonElement(achievement)
+                value = kotlinx.serialization.json.Json.encodeToJsonElement(serializer<Achievement>(), achievement)
             )
         }
 
@@ -361,13 +362,13 @@ class RecordManagerExamples(
             // Create new stats record
             RecordManager.WriteOperation.Create(
                 collection = "com.jollywhoppers.minecraft.player.stats",
-                value = kotlinx.serialization.json.Json.encodeToJsonElement(stats)
+                value = kotlinx.serialization.json.Json.encodeToJsonElement(serializer<PlayerStats>(), stats)
             ),
             // Update profile
             RecordManager.WriteOperation.Update(
                 collection = "com.jollywhoppers.minecraft.player.profile",
                 rkey = "self",
-                value = kotlinx.serialization.json.Json.encodeToJsonElement(profileUpdate)
+                value = kotlinx.serialization.json.Json.encodeToJsonElement(serializer<PlayerProfile>(), profileUpdate)
             )
         )
 
@@ -425,7 +426,7 @@ class RecordManagerExamples(
 
         val alreadyUnlocked = existing.any { recordData ->
             try {
-                val achievement = kotlinx.serialization.json.Json.decodeFromJsonElement<Achievement>(recordData.value)
+                val achievement = kotlinx.serialization.json.Json.decodeFromJsonElement(serializer<Achievement>(), recordData.value)
                 achievement.achievementId == achievementKey
             } catch (e: Exception) {
                 false

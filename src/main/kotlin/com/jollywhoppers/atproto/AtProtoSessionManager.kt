@@ -78,7 +78,9 @@ class AtProtoSessionManager(
 
     /**
      * Creates or updates a session for a player.
+     * @deprecated Use storeVerifiedSession for client-authenticated sessions
      */
+    @Deprecated("Use storeVerifiedSession for client-authenticated sessions")
     suspend fun createSession(
         uuid: UUID,
         identifier: String,
@@ -108,6 +110,37 @@ class AtProtoSessionManager(
         
         logger.info("Session created successfully for $handle")
         session
+    }
+    
+    /**
+     * Stores a verified session that was authenticated client-side.
+     * This is the preferred method for storing sessions.
+     */
+    fun storeVerifiedSession(
+        uuid: UUID,
+        did: String,
+        handle: String,
+        pdsUrl: String,
+        accessJwt: String,
+        refreshJwt: String
+    ) {
+        logger.info("Storing verified session for player $uuid (${handle})")
+        
+        val session = PlayerSession(
+            uuid = uuid.toString(),
+            did = did,
+            handle = handle,
+            pdsUrl = pdsUrl,
+            accessJwt = accessJwt,
+            refreshJwt = refreshJwt,
+            createdAt = System.currentTimeMillis(),
+            lastRefreshed = System.currentTimeMillis()
+        )
+        
+        sessions[uuid] = session
+        save()
+        
+        logger.info("Verified session stored successfully for $handle")
     }
 
     /**

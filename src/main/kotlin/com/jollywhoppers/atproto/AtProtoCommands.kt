@@ -60,16 +60,6 @@ class AtProtoCommands(
                         .executes { context -> unlinkIdentity(context) }
                 )
                 .then(
-                    Commands.literal("login")
-                        .then(
-                            Commands.argument("identifier", StringArgumentType.string())
-                                .then(
-                                    Commands.argument("password", StringArgumentType.greedyString())
-                                        .executes { context -> login(context) }
-                                )
-                        )
-                )
-                .then(
                     Commands.literal("logout")
                         .executes { context -> logout(context) }
                 )
@@ -181,9 +171,10 @@ class AtProtoCommands(
 
     /**
      * Authenticates a player with their AT Protocol credentials.
-     * Uses app passwords for security. Includes rate limiting.
+     * @deprecated Login is now handled client-side
      */
-    private fun login(context: CommandContext<CommandSourceStack>): Int {
+    @Deprecated("Login is now handled client-side")
+    private fun loginDeprecated(context: CommandContext<CommandSourceStack>): Int {
         val player = context.source.playerOrException
         val identifier = StringArgumentType.getString(context, "identifier")
         val password = StringArgumentType.getString(context, "password")
@@ -455,21 +446,16 @@ class AtProtoCommands(
     private fun help(context: CommandContext<CommandSourceStack>): Int {
         context.source.sendSuccess(
             {
-                Component.literal("§b━━━ AT Protocol Commands ━━━")
+                Component.literal("§b━━━ AT Protocol Commands (Server) ━━━")
                     .append(Component.literal("\n§f/atproto link <handle or DID>"))
                     .append(Component.literal("\n  §7Link your Minecraft account to your AT Protocol identity"))
                     .append(Component.literal("\n  §7Example: §f/atproto link alice.bsky.social"))
                     .append(Component.literal("\n"))
-                    .append(Component.literal("\n§f/atproto login <handle> <app-password>"))
-                    .append(Component.literal("\n  §7Authenticate to enable data syncing"))
-                    .append(Component.literal("\n  §7§cUse an App Password, not your main password!"))
-                    .append(Component.literal("\n  §7Get one from: Settings → App Passwords"))
-                    .append(Component.literal("\n"))
-                    .append(Component.literal("\n§f/atproto logout"))
-                    .append(Component.literal("\n  §7Log out (removes authentication, keeps identity link)"))
-                    .append(Component.literal("\n"))
                     .append(Component.literal("\n§f/atproto unlink"))
                     .append(Component.literal("\n  §7Unlink your AT Protocol identity completely"))
+                    .append(Component.literal("\n"))
+                    .append(Component.literal("\n§f/atproto logout"))
+                    .append(Component.literal("\n  §7Log out (removes authentication from server)"))
                     .append(Component.literal("\n"))
                     .append(Component.literal("\n§f/atproto whoami"))
                     .append(Component.literal("\n  §7View your linked identity and authentication status"))
@@ -479,6 +465,12 @@ class AtProtoCommands(
                     .append(Component.literal("\n"))
                     .append(Component.literal("\n§f/atproto whois <player or handle>"))
                     .append(Component.literal("\n  §7Look up another player's AT Protocol identity"))
+                    .append(Component.literal("\n"))
+                    .append(Component.literal("\n§e━━━ Client-Side Login (Type in Client) ━━━"))
+                    .append(Component.literal("\n§eFor authentication, use the client-side command:"))
+                    .append(Component.literal("\n§f/atproto login <handle> <app-password>"))
+                    .append(Component.literal("\n§7Authentication happens on your computer"))
+                    .append(Component.literal("\n§7Your password never goes to the server!"))
             },
             false
         )

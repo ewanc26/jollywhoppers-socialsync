@@ -72,6 +72,9 @@ object Atprotoconnect : ModInitializer {
                 logger.info("AT Protocol commands registered")
             }
             
+            // Register network packet handlers
+            com.jollywhoppers.network.ServerNetworkHandler.register()
+            
             // Schedule periodic cleanup tasks
             setupCleanupTasks()
             
