@@ -1,5 +1,8 @@
 package com.jollywhoppers.atproto
 
+import com.jollywhoppers.atproto.security.RateLimiter
+import com.jollywhoppers.atproto.security.SecurityAuditor
+import com.jollywhoppers.atproto.security.SecurityUtils
 import com.mojang.brigadier.CommandDispatcher
 import com.mojang.brigadier.arguments.StringArgumentType
 import com.mojang.brigadier.context.CommandContext
@@ -11,10 +14,18 @@ import net.minecraft.commands.Commands
 import net.minecraft.network.chat.Component
 import net.minecraft.server.level.ServerPlayer
 import org.slf4j.LoggerFactory
+import java.time.Duration
+import java.time.Instant
 
 /**
  * Handles AT Protocol-related commands for players.
  * Provides commands to link, authenticate, and manage AT Protocol identities.
+ * 
+ * SECURITY FEATURES:
+ * - Rate limiting on authentication (3 attempts per 15 minutes)
+ * - Security audit logging for all sensitive operations
+ * - Sanitized error messages
+ * - Secure password handling (no logging)
  */
 class AtProtoCommands(
     private val client: AtProtoClient,
@@ -23,6 +34,13 @@ class AtProtoCommands(
 ) {
     private val logger = LoggerFactory.getLogger("atproto-connect")
     private val coroutineScope = CoroutineScope(Dispatchers.IO)
+    
+    // Rate limiter: 3 attempts per 15 minutes, 30 minute lockout
+    private val rateLimiter = RateLimiter(
+        maxAttempts = 3,
+        windowSeconds = 900,  // 15 minutes
+        lockoutSeconds = 1800  // 30 minutes
+    )
 
     /**
      * Registers all AT Protocol commands.
@@ -96,6 +114,9 @@ class AtProtoCommands(
 
                 // Link the identity
                 identityStore.linkIdentity(player.uuid, profile.did, profile.handle)
+                
+                // Audit log
+                SecurityAuditor.logIdentityLink(player.uuid, profile.handle, player.name.string)
 
                 player.sendSystemMessage(
                     Component.literal("§a✓ Successfully linked to AT Protocol!")
@@ -114,9 +135,9 @@ class AtProtoCommands(
             } catch (e: Exception) {
                 player.sendSystemMessage(
                     Component.literal("§c✗ Failed to link AT Protocol identity")
-                        .append(Component.literal("\n§7${e.message ?: "Unknown error"}"))
+                        .append(Component.literal("\n§7${sanitizeError(e)}"))
                 )
-                logger.error("Failed to link identity for player ${player.name.string}", e)
+                logger.error("Failed to link identity for player ${player.name.string}: ${e.javaClass.simpleName}")
             }
         }
 
@@ -137,6 +158,10 @@ class AtProtoCommands(
             }
             
             identityStore.unlinkIdentity(player.uuid)
+            
+            // Audit log
+            SecurityAuditor.logIdentityUnlink(player.uuid, identity.handle, player.name.string)
+            
             context.source.sendSuccess(
                 {
                     Component.literal("§a✓ Unlinked from AT Protocol identity")
@@ -156,27 +181,60 @@ class AtProtoCommands(
 
     /**
      * Authenticates a player with their AT Protocol credentials.
-     * Uses app passwords for security.
+     * Uses app passwords for security. Includes rate limiting.
      */
     private fun login(context: CommandContext<CommandSourceStack>): Int {
         val player = context.source.playerOrException
         val identifier = StringArgumentType.getString(context, "identifier")
         val password = StringArgumentType.getString(context, "password")
 
+        // Check rate limit BEFORE attempting authentication
+        val rateLimit = rateLimiter.checkAttempt(player.uuid)
+        if (!rateLimit.allowed) {
+            val lockUntil = rateLimit.lockedUntil
+            if (lockUntil != null) {
+                val minutesRemaining = Duration.between(
+                    Instant.now(),
+                    lockUntil
+                ).toMinutes()
+                
+                SecurityAuditor.logRateLimitLockout(player.uuid, player.name.string, minutesRemaining)
+                
+                context.source.sendFailure(
+                    Component.literal("§c✗ Too many failed authentication attempts")
+                        .append(Component.literal("\n§7Your account has been temporarily locked for security"))
+                        .append(Component.literal("\n§7Please try again in §f$minutesRemaining minutes"))
+                        .append(Component.literal("\n\n§7If you're having trouble, check your app password"))
+                )
+                logger.warn("Player ${player.name.string} (${player.uuid}) blocked by rate limiter")
+                return 0
+            }
+        }
+
+        val attemptsRemaining = rateLimit.attemptsRemaining
         context.source.sendSuccess(
-            { Component.literal("§eAuthenticating with AT Protocol...") },
+            { 
+                Component.literal("§eAuthenticating with AT Protocol...")
+                    .append(Component.literal(" §7(${attemptsRemaining} attempts remaining)"))
+            },
             false
         )
 
         coroutineScope.launch {
             try {
-                // Create session
+                // Create session (password is not logged)
                 val session = sessionManager.createSession(player.uuid, identifier, password).getOrThrow()
 
                 // Link identity if not already linked
                 if (!identityStore.isLinked(player.uuid)) {
                     identityStore.linkIdentity(player.uuid, session.did, session.handle)
                 }
+
+                // Record successful authentication (clears rate limit)
+                rateLimiter.recordSuccess(player.uuid)
+                
+                // Audit log
+                SecurityAuditor.logAuthSuccess(player.uuid, session.handle, player.name.string)
 
                 player.sendSystemMessage(
                     Component.literal("§a✓ Successfully authenticated!")
@@ -188,13 +246,43 @@ class AtProtoCommands(
 
                 logger.info("Player ${player.name.string} (${player.uuid}) authenticated as ${session.handle}")
             } catch (e: Exception) {
-                player.sendSystemMessage(
-                    Component.literal("§c✗ Authentication failed")
-                        .append(Component.literal("\n§7${e.message ?: "Unknown error"}"))
-                        .append(Component.literal("\n\n§7Tip: Use an §fApp Password§7 from your AT Protocol account settings"))
-                        .append(Component.literal("\n§7Never use your main account password!"))
+                // Record failed attempt
+                rateLimiter.recordFailure(player.uuid)
+                val status = rateLimiter.getStatus(player.uuid)
+                
+                // Audit log
+                SecurityAuditor.logAuthFailure(
+                    player.uuid, 
+                    SecurityUtils.sanitizeForLog(identifier),
+                    e.javaClass.simpleName,
+                    player.name.string
                 )
-                logger.error("Failed to authenticate player ${player.name.string}", e)
+                
+                if (status.attemptsRemaining > 0) {
+                    player.sendSystemMessage(
+                        Component.literal("§c✗ Authentication failed")
+                            .append(Component.literal("\n§7${sanitizeError(e)}"))
+                            .append(Component.literal("\n§7Attempts remaining: §f${status.attemptsRemaining}"))
+                            .append(Component.literal("\n\n§7Tip: Use an §fApp Password§7 from your AT Protocol account settings"))
+                            .append(Component.literal("\n§cNever use your main account password!"))
+                    )
+                } else {
+                    val lockUntil = status.lockedUntil
+                    val minutesRemaining = if (lockUntil != null) {
+                        Duration.between(Instant.now(), lockUntil).toMinutes()
+                    } else 30
+                    
+                    SecurityAuditor.logRateLimitHit(player.uuid, player.name.string)
+                    
+                    player.sendSystemMessage(
+                        Component.literal("§c✗ Authentication failed - Rate limit exceeded")
+                            .append(Component.literal("\n§7Too many failed attempts"))
+                            .append(Component.literal("\n§7Your account is locked for §f$minutesRemaining minutes"))
+                            .append(Component.literal("\n\n§7Please verify your app password and try again later"))
+                    )
+                }
+                
+                logger.error("Failed to authenticate player ${player.name.string}: ${e.javaClass.simpleName}")
             }
         }
 
@@ -206,9 +294,16 @@ class AtProtoCommands(
      */
     private fun logout(context: CommandContext<CommandSourceStack>): Int {
         val player = context.source.playerOrException
+        val identity = identityStore.getIdentity(player.uuid)
         
         return if (sessionManager.hasSession(player.uuid)) {
             sessionManager.deleteSession(player.uuid)
+            
+            // Audit log
+            if (identity != null) {
+                SecurityAuditor.logLogout(player.uuid, identity.handle, player.name.string)
+            }
+            
             context.source.sendSuccess(
                 {
                     Component.literal("§a✓ Logged out successfully")
@@ -306,7 +401,7 @@ class AtProtoCommands(
                     )
                 }
             } catch (e: Exception) {
-                logger.error("Error in whois command", e)
+                logger.error("Error in whois command: ${e.javaClass.simpleName}")
             }
         }
 
@@ -401,5 +496,38 @@ class AtProtoCommands(
             seconds < 86400 -> "${seconds / 3600} hours"
             else -> "${seconds / 86400} days"
         }
+    }
+    
+    /**
+     * Sanitizes error messages to avoid leaking sensitive information.
+     */
+    private fun sanitizeError(e: Exception): String {
+        return when (e) {
+            is java.net.UnknownHostException -> "Could not resolve hostname. Please check the handle or DID."
+            is java.net.ConnectException -> "Connection failed. The server may be unavailable."
+            is java.net.SocketTimeoutException -> "Connection timed out. Please try again."
+            is javax.crypto.BadPaddingException -> "Authentication failed. Please check your credentials."
+            is IllegalArgumentException -> {
+                // Only show message if it's a safe validation error
+                if (e.message?.contains("Invalid") == true || e.message?.contains("format") == true) {
+                    e.message ?: "Invalid input"
+                } else {
+                    "Invalid request"
+                }
+            }
+            else -> {
+                // Log full error server-side only
+                logger.error("Operation failed with ${e.javaClass.simpleName}: ${e.message}")
+                "An error occurred. Please try again or contact an administrator."
+            }
+        }
+    }
+    
+    /**
+     * Periodic cleanup task for rate limiter.
+     * Should be called from the main mod initializer.
+     */
+    fun cleanup() {
+        rateLimiter.cleanup()
     }
 }

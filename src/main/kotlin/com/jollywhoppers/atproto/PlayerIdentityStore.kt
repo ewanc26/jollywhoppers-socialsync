@@ -1,5 +1,6 @@
 package com.jollywhoppers.atproto
 
+import com.jollywhoppers.atproto.security.SecurityUtils
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
@@ -9,14 +10,24 @@ import java.nio.file.Path
 import java.nio.file.StandardOpenOption
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.locks.ReentrantReadWriteLock
+import kotlin.concurrent.read
+import kotlin.concurrent.write
 
 /**
  * Manages the mapping between Minecraft UUIDs and AT Protocol DIDs.
- * Handles persistence to disk and in-memory caching.
+ * Handles persistence to disk with proper file permissions and thread safety.
+ * 
+ * SECURITY FEATURES:
+ * - Restricted file permissions (owner-only)
+ * - Atomic file writes to prevent corruption
+ * - Thread-safe operations
+ * - Path validation
  */
 class PlayerIdentityStore(private val storageFile: Path) {
     private val logger = LoggerFactory.getLogger("atproto-connect")
     private val identities = ConcurrentHashMap<UUID, PlayerIdentity>()
+    private val fileLock = ReentrantReadWriteLock()
     
     private val json = Json {
         prettyPrint = true
@@ -39,7 +50,14 @@ class PlayerIdentityStore(private val storageFile: Path) {
     )
 
     init {
+        // Validate storage path is in expected directory
+        val configDir = storageFile.parent
+        if (!SecurityUtils.validatePathInDirectory(storageFile, configDir)) {
+            throw SecurityException("Storage file path is outside expected directory")
+        }
+        
         load()
+        logger.info("Player identity store initialized with ${identities.size} identities")
     }
 
     /**
@@ -127,7 +145,7 @@ class PlayerIdentityStore(private val storageFile: Path) {
     /**
      * Loads identities from disk.
      */
-    private fun load() {
+    private fun load() = fileLock.read {
         try {
             if (Files.exists(storageFile)) {
                 val content = Files.readString(storageFile)
@@ -148,9 +166,10 @@ class PlayerIdentityStore(private val storageFile: Path) {
     }
 
     /**
-     * Saves identities to disk.
+     * Saves identities to disk with proper file permissions.
+     * Uses atomic write pattern to prevent corruption.
      */
-    private fun save() {
+    private fun save() = fileLock.write {
         try {
             Files.createDirectories(storageFile.parent)
             
@@ -160,12 +179,23 @@ class PlayerIdentityStore(private val storageFile: Path) {
             )
             
             val content = json.encodeToString(storage)
+            
+            // Atomic write: write to temp file, then rename
+            val tempFile = storageFile.parent.resolve("${storageFile.fileName}.tmp")
             Files.writeString(
-                storageFile,
+                tempFile,
                 content,
                 StandardOpenOption.CREATE,
                 StandardOpenOption.TRUNCATE_EXISTING
             )
+            
+            // Set restricted permissions on temp file
+            SecurityUtils.setRestrictedPermissions(tempFile)
+            
+            // Atomic rename
+            Files.move(tempFile, storageFile,
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                java.nio.file.StandardCopyOption.ATOMIC_MOVE)
             
             logger.debug("Saved ${identities.size} player identities to disk")
         } catch (e: Exception) {

@@ -1,8 +1,11 @@
 package com.jollywhoppers.atproto
 
+import com.jollywhoppers.atproto.security.SecurityUtils
+import com.jollywhoppers.atproto.security.SecurityAuditor
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
+import java.net.InetAddress
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -13,15 +16,24 @@ import java.util.*
 /**
  * Enhanced AT Protocol client with PDS resolution via Slingshot.
  * Handles identity resolution, authentication, and XRPC requests.
+ * 
+ * SECURITY FEATURES:
+ * - SSRF protection with comprehensive private network blocking
+ * - DNS resolution validation
+ * - No automatic HTTP redirects (prevents redirect-based SSRF)
+ * - Request timeouts on all HTTP operations
+ * - Sanitized error messages
  */
 class AtProtoClient(
     private val slingshotUrl: String = "https://slingshot.microcosm.blue",
     private val fallbackPdsUrl: String = "https://bsky.social"
 ) {
     private val logger = LoggerFactory.getLogger("atproto-connect")
+    
+    // HTTP client with security hardening
     private val httpClient = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(10))
-        .followRedirects(HttpClient.Redirect.NORMAL)
+        .followRedirects(HttpClient.Redirect.NEVER) // Disabled for security - prevents redirect-based SSRF
         .build()
     
     private val json = Json {
@@ -101,10 +113,14 @@ class AtProtoClient(
      * This is the preferred method as it's fast and cached.
      */
     suspend fun resolveMiniDoc(identifier: String): Result<MiniDoc> = runCatching {
-        logger.info("Resolving identifier via Slingshot: $identifier")
+        logger.info("Resolving identifier via Slingshot: ${SecurityUtils.sanitizeForLog(identifier)}")
+        
+        // Validate URL before making request
+        val url = "$slingshotUrl/xrpc/com.bad-example.identity.resolveMiniDoc?identifier=${encodeURIComponent(identifier)}"
+        validateUrl(url)
         
         val request = HttpRequest.newBuilder()
-            .uri(URI.create("$slingshotUrl/xrpc/com.bad-example.identity.resolveMiniDoc?identifier=${encodeURIComponent(identifier)}"))
+            .uri(URI.create(url))
             .GET()
             .timeout(Duration.ofSeconds(10))
             .build()
@@ -112,10 +128,14 @@ class AtProtoClient(
         val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
         
         if (response.statusCode() != 200) {
-            throw Exception("Failed to resolve via Slingshot: HTTP ${response.statusCode()}")
+            throw Exception("Resolution failed")
         }
 
         val miniDoc = json.decodeFromString<MiniDoc>(response.body())
+        
+        // Validate PDS URL
+        validateUrl(miniDoc.pds)
+        
         logger.info("Resolved ${miniDoc.handle} -> PDS: ${miniDoc.pds}")
         miniDoc
     }
@@ -125,19 +145,22 @@ class AtProtoClient(
      * Falls back to standard resolution if Slingshot fails.
      */
     suspend fun resolveHandle(handle: String): Result<String> = runCatching {
-        logger.info("Resolving handle: $handle")
+        logger.info("Resolving handle: ${SecurityUtils.sanitizeForLog(handle)}")
         
         // Try Slingshot's MiniDoc first
         try {
             val miniDoc = resolveMiniDoc(handle).getOrThrow()
             return@runCatching miniDoc.did
         } catch (e: Exception) {
-            logger.warn("Slingshot resolution failed, trying fallback: ${e.message}")
+            logger.warn("Slingshot resolution failed, trying fallback")
         }
 
         // Fallback to standard XRPC resolution
+        val url = "$fallbackPdsUrl/xrpc/com.atproto.identity.resolveHandle?handle=$handle"
+        validateUrl(url)
+        
         val request = HttpRequest.newBuilder()
-            .uri(URI.create("$fallbackPdsUrl/xrpc/com.atproto.identity.resolveHandle?handle=$handle"))
+            .uri(URI.create(url))
             .GET()
             .timeout(Duration.ofSeconds(10))
             .build()
@@ -145,11 +168,11 @@ class AtProtoClient(
         val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
         
         if (response.statusCode() != 200) {
-            throw Exception("Failed to resolve handle: HTTP ${response.statusCode()}")
+            throw Exception("Handle resolution failed")
         }
 
         val resolution = json.decodeFromString<HandleResolution>(response.body())
-        logger.info("Resolved handle $handle to DID: ${resolution.did}")
+        logger.info("Resolved handle to DID")
         resolution.did
     }
 
@@ -158,7 +181,7 @@ class AtProtoClient(
      * Supports did:plc and did:web methods.
      */
     suspend fun resolveDid(did: String): Result<DidDocument> = runCatching {
-        logger.info("Resolving DID: $did")
+        logger.info("Resolving DID: ${SecurityUtils.sanitizeForLog(did)}")
 
         val url = when {
             did.startsWith("did:plc:") -> {
@@ -170,15 +193,18 @@ class AtProtoClient(
 
                 // Validate domain format (no IPs, only valid hostnames)
                 if (!domain.matches(Regex("^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"))) {
-                    throw IllegalArgumentException("Invalid did:web domain format: must be a valid hostname")
+                    throw IllegalArgumentException("Invalid did:web domain format")
                 }
 
                 // Block private IP ranges and localhost
                 validateNotPrivateNetwork(domain)
+                
+                // Validate DNS resolution
+                validateDnsResolution(domain)
 
                 "https://$domain/.well-known/did.json"
             }
-            else -> throw IllegalArgumentException("Unsupported DID method: $did")
+            else -> throw IllegalArgumentException("Unsupported DID method")
         }
 
         val request = HttpRequest.newBuilder()
@@ -190,11 +216,11 @@ class AtProtoClient(
         val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
         
         if (response.statusCode() != 200) {
-            throw Exception("Failed to resolve DID: HTTP ${response.statusCode()}")
+            throw Exception("DID resolution failed")
         }
 
         val didDoc = json.decodeFromString<DidDocument>(response.body())
-        logger.info("Resolved DID $did successfully")
+        logger.info("Resolved DID successfully")
         didDoc
     }
 
@@ -203,7 +229,7 @@ class AtProtoClient(
      * Uses Slingshot for PDS resolution if needed.
      */
     suspend fun getProfile(actor: String, pdsUrl: String? = null): Result<ProfileView> = runCatching {
-        logger.info("Fetching profile for: $actor")
+        logger.info("Fetching profile for: ${SecurityUtils.sanitizeForLog(actor)}")
         
         val serviceUrl = pdsUrl ?: run {
             // Resolve PDS if not provided
@@ -211,13 +237,16 @@ class AtProtoClient(
                 val miniDoc = resolveMiniDoc(actor).getOrThrow()
                 miniDoc.pds
             } catch (e: Exception) {
-                logger.warn("Could not resolve PDS, using fallback: ${e.message}")
+                logger.warn("Could not resolve PDS, using fallback")
                 fallbackPdsUrl
             }
         }
         
+        val url = "$serviceUrl/xrpc/app.bsky.actor.getProfile?actor=$actor"
+        validateUrl(url)
+        
         val request = HttpRequest.newBuilder()
-            .uri(URI.create("$serviceUrl/xrpc/app.bsky.actor.getProfile?actor=$actor"))
+            .uri(URI.create(url))
             .GET()
             .timeout(Duration.ofSeconds(10))
             .build()
@@ -225,37 +254,41 @@ class AtProtoClient(
         val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
         
         if (response.statusCode() != 200) {
-            throw Exception("Failed to get profile: HTTP ${response.statusCode()}: ${response.body()}")
+            throw Exception("Profile fetch failed")
         }
 
         val profile = json.decodeFromString<ProfileView>(response.body())
-        logger.info("Retrieved profile for ${profile.handle} (${profile.did})")
+        logger.info("Retrieved profile successfully")
         profile
     }
 
     /**
      * Creates an authenticated session using identifier and app password.
      * This is the primary authentication method for the mod.
+     * Password is NOT logged for security.
      */
     suspend fun createSession(identifier: String, password: String): Result<CreateSessionResponse> = runCatching {
-        logger.info("Creating session for: $identifier")
+        logger.info("Creating session for: ${SecurityUtils.sanitizeForLog(identifier)}")
         
         // Resolve to find the correct PDS
         val pdsUrl = try {
             val miniDoc = resolveMiniDoc(identifier).getOrThrow()
             miniDoc.pds
         } catch (e: Exception) {
-            logger.warn("Could not resolve PDS via Slingshot, trying fallback: ${e.message}")
+            logger.warn("Could not resolve PDS via Slingshot, trying fallback")
             fallbackPdsUrl
         }
         
         val requestBody = CreateSessionRequest(
             identifier = identifier,
-            password = password
+            password = password // Password is never logged
         )
         
+        val url = "$pdsUrl/xrpc/com.atproto.server.createSession"
+        validateUrl(url)
+        
         val request = HttpRequest.newBuilder()
-            .uri(URI.create("$pdsUrl/xrpc/com.atproto.server.createSession"))
+            .uri(URI.create(url))
             .POST(HttpRequest.BodyPublishers.ofString(json.encodeToString(CreateSessionRequest.serializer(), requestBody)))
             .header("Content-Type", "application/json")
             .timeout(Duration.ofSeconds(15))
@@ -264,13 +297,13 @@ class AtProtoClient(
         val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
         
         if (response.statusCode() != 200) {
-            val errorBody = response.body()
-            logger.error("Session creation failed: HTTP ${response.statusCode()}: $errorBody")
-            throw Exception("Failed to create session: HTTP ${response.statusCode()}: $errorBody")
+            // Don't log response body as it might contain sensitive info
+            logger.error("Session creation failed: HTTP ${response.statusCode()}")
+            throw Exception("Authentication failed")
         }
 
         val session = json.decodeFromString<CreateSessionResponse>(response.body())
-        logger.info("Session created successfully for ${session.handle}")
+        logger.info("Session created successfully")
         session
     }
 
@@ -282,8 +315,11 @@ class AtProtoClient(
         
         val requestBody = RefreshSessionRequest(refreshJwt = refreshJwt)
         
+        val url = "$pdsUrl/xrpc/com.atproto.server.refreshSession"
+        validateUrl(url)
+        
         val request = HttpRequest.newBuilder()
-            .uri(URI.create("$pdsUrl/xrpc/com.atproto.server.refreshSession"))
+            .uri(URI.create(url))
             .POST(HttpRequest.BodyPublishers.ofString(json.encodeToString(RefreshSessionRequest.serializer(), requestBody)))
             .header("Content-Type", "application/json")
             .header("Authorization", "Bearer $refreshJwt")
@@ -293,7 +329,7 @@ class AtProtoClient(
         val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
         
         if (response.statusCode() != 200) {
-            throw Exception("Failed to refresh session: HTTP ${response.statusCode()}")
+            throw Exception("Session refresh failed")
         }
 
         json.decodeFromString<CreateSessionResponse>(response.body())
@@ -309,8 +345,11 @@ class AtProtoClient(
         pdsUrl: String,
         body: String? = null
     ): Result<String> = runCatching {
+        val url = "$pdsUrl/xrpc/$endpoint"
+        validateUrl(url)
+        
         val requestBuilder = HttpRequest.newBuilder()
-            .uri(URI.create("$pdsUrl/xrpc/$endpoint"))
+            .uri(URI.create(url))
             .header("Authorization", "Bearer $accessJwt")
             .header("Content-Type", "application/json")
             .timeout(Duration.ofSeconds(15))
@@ -324,13 +363,13 @@ class AtProtoClient(
                 HttpRequest.BodyPublishers.ofString(body ?: "{}")
             ).build()
             "DELETE" -> requestBuilder.DELETE().build()
-            else -> throw IllegalArgumentException("Unsupported HTTP method: $method")
+            else -> throw IllegalArgumentException("Unsupported HTTP method")
         }
 
         val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
         
         if (response.statusCode() !in 200..299) {
-            throw Exception("XRPC request failed: HTTP ${response.statusCode()}: ${response.body()}")
+            throw Exception("Request failed")
         }
 
         response.body()
@@ -378,18 +417,18 @@ class AtProtoClient(
                     val uri = try {
                         URI.create(serviceEndpoint)
                     } catch (e: Exception) {
-                        throw Exception("Invalid serviceEndpoint URI: ${e.message}")
+                        throw Exception("Invalid serviceEndpoint URI")
                     }
 
                     // Validate per AT Protocol spec
                     require(uri.scheme in listOf("http", "https")) {
-                        "serviceEndpoint must use HTTP or HTTPS scheme, got: ${uri.scheme}"
+                        "serviceEndpoint must use HTTP or HTTPS scheme"
                     }
                     require(uri.host != null) {
                         "serviceEndpoint must have a valid host"
                     }
                     require(uri.path.isNullOrEmpty() || uri.path == "/") {
-                        "serviceEndpoint must not contain path, got: ${uri.path}"
+                        "serviceEndpoint must not contain path"
                     }
                     require(uri.query == null) {
                         "serviceEndpoint must not contain query parameters"
@@ -403,6 +442,9 @@ class AtProtoClient(
 
                     // Block private IP ranges
                     validateNotPrivateNetwork(uri.host)
+                    
+                    // Validate DNS resolution
+                    validateDnsResolution(uri.host)
 
                     // Reconstruct clean URL
                     val cleanPdsUrl = "${uri.scheme}://${uri.host}${uri.port.takeIf { it != -1 }?.let { ":$it" } ?: ""}"
@@ -427,24 +469,105 @@ class AtProtoClient(
     }
 
     /**
+     * Validates a URL before making HTTP requests.
+     * Checks for SSRF vulnerabilities.
+     */
+    private fun validateUrl(url: String) {
+        try {
+            val uri = URI.create(url)
+            
+            // Ensure HTTPS (except for localhost during development)
+            if (uri.scheme != "https" && uri.host != "localhost") {
+                throw IllegalArgumentException("Only HTTPS URLs are allowed")
+            }
+            
+            require(uri.host != null) { "URL must have a host" }
+            
+            // Validate host is not private network
+            validateNotPrivateNetwork(uri.host)
+            
+            // Validate DNS resolution if it's a hostname
+            if (!uri.host.matches(Regex("^\\d+\\.\\d+\\.\\d+\\.\\d+$"))) {
+                validateDnsResolution(uri.host)
+            }
+        } catch (e: IllegalArgumentException) {
+            throw e
+        } catch (e: Exception) {
+            throw IllegalArgumentException("Invalid URL format")
+        }
+    }
+
+    /**
      * Validates that a hostname or domain is not a private network address.
-     * Throws IllegalArgumentException if the address is localhost or a private IP range.
+     * Enhanced with more comprehensive checks.
      */
     private fun validateNotPrivateNetwork(host: String) {
-        val blockedPatterns = listOf(
+        // Localhost variants
+        val localhostPatterns = listOf(
             Regex("^localhost$", RegexOption.IGNORE_CASE),
-            Regex("^127\\."),
-            Regex("^10\\."),
-            Regex("^172\\.(1[6-9]|2[0-9]|3[01])\\."),
-            Regex("^192\\.168\\."),
-            Regex("^169\\.254\\."),
+            Regex("^127\\..*"),
             Regex("^::1$"),
-            Regex("^fc00:"),
-            Regex("^fe80:")
+            Regex("^::ffff:127\\..*"), // IPv4-mapped IPv6 localhost
+            Regex("^0:0:0:0:0:0:0:1$")
         )
+        
+        // Private IPv4 ranges
+        val privateIPv4 = listOf(
+            Regex("^10\\..*"),
+            Regex("^172\\.(1[6-9]|2[0-9]|3[01])\\..*"),
+            Regex("^192\\.168\\..*"),
+            Regex("^169\\.254\\..*") // Link-local
+        )
+        
+        // Private IPv6 ranges
+        val privateIPv6 = listOf(
+            Regex("^fc00:.*", RegexOption.IGNORE_CASE),
+            Regex("^fd[0-9a-f]{2}:.*", RegexOption.IGNORE_CASE),
+            Regex("^fe80:.*", RegexOption.IGNORE_CASE) // Link-local
+        )
+        
+        // Cloud metadata services
+        val cloudMetadata = listOf(
+            Regex("^169\\.254\\.169\\.254$"), // AWS, Azure, GCP
+            Regex("^metadata\\.google\\.internal$", RegexOption.IGNORE_CASE),
+            Regex("^100\\.100\\.100\\.200$") // Alibaba Cloud
+        )
+        
+        val allPatterns = localhostPatterns + privateIPv4 + privateIPv6 + cloudMetadata
 
-        if (blockedPatterns.any { it.containsMatchIn(host) }) {
-            throw IllegalArgumentException("Access to private networks is not allowed: $host")
+        if (allPatterns.any { it.containsMatchIn(host) }) {
+            SecurityAuditor.logSuspiciousActivity(null, "Blocked access to private network: $host")
+            throw IllegalArgumentException("Access to private networks is not allowed")
+        }
+    }
+    
+    /**
+     * Validates DNS resolution to ensure it doesn't resolve to private IPs.
+     * Helps prevent DNS rebinding attacks.
+     */
+    private fun validateDnsResolution(hostname: String) {
+        try {
+            val addresses = InetAddress.getAllByName(hostname)
+            
+            addresses.forEach { addr ->
+                val hostAddress = addr.hostAddress
+                
+                // Check if resolved IP is private
+                if (addr.isLoopbackAddress || addr.isLinkLocalAddress || 
+                    addr.isSiteLocalAddress || addr.isAnyLocalAddress) {
+                    SecurityAuditor.logSuspiciousActivity(null, "DNS resolved to private address: $hostAddress for $hostname")
+                    throw IllegalArgumentException("DNS resolved to private address")
+                }
+                
+                // Additional string pattern check
+                validateNotPrivateNetwork(hostAddress)
+            }
+        } catch (e: java.net.UnknownHostException) {
+            throw IllegalArgumentException("Could not resolve hostname")
+        } catch (e: IllegalArgumentException) {
+            throw e
+        } catch (e: Exception) {
+            throw IllegalArgumentException("DNS resolution validation failed")
         }
     }
 }

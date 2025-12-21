@@ -1,5 +1,7 @@
 package com.jollywhoppers.atproto
 
+import com.jollywhoppers.atproto.security.SecurityUtils
+import com.jollywhoppers.atproto.security.SecurityAuditor
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
@@ -9,10 +11,21 @@ import java.nio.file.Path
 import java.nio.file.StandardOpenOption
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.locks.ReentrantReadWriteLock
+import javax.crypto.SecretKey
+import kotlin.concurrent.read
+import kotlin.concurrent.write
 
 /**
  * Manages AT Protocol authentication sessions for players.
- * Handles token storage, refresh, and session lifecycle.
+ * Handles token storage with encryption, refresh, and session lifecycle.
+ * 
+ * SECURITY FEATURES:
+ * - AES-256-GCM encryption for session data at rest
+ * - Restricted file permissions (owner-only)
+ * - Atomic file writes to prevent corruption
+ * - Thread-safe session management
+ * - Automatic token refresh
  */
 class AtProtoSessionManager(
     private val storageFile: Path,
@@ -20,6 +33,8 @@ class AtProtoSessionManager(
 ) {
     private val logger = LoggerFactory.getLogger("atproto-connect")
     private val sessions = ConcurrentHashMap<UUID, PlayerSession>()
+    private val encryptionKey: SecretKey
+    private val fileLock = ReentrantReadWriteLock()
     
     private val json = Json {
         prettyPrint = true
@@ -40,12 +55,25 @@ class AtProtoSessionManager(
 
     @Serializable
     private data class SessionStorage(
-        val version: Int = 1,
+        val version: Int = 2, // Version 2 = encrypted
         val sessions: List<PlayerSession>
     )
 
     init {
+        // Validate storage path is in expected directory
+        val configDir = storageFile.parent
+        if (!SecurityUtils.validatePathInDirectory(storageFile, configDir)) {
+            throw SecurityException("Storage file path is outside expected directory")
+        }
+        
+        // Load or generate encryption key
+        val keyFile = configDir.resolve(".encryption.key")
+        encryptionKey = SecurityUtils.loadOrGenerateServerKey(keyFile)
+        
+        // Load existing sessions
         load()
+        
+        logger.info("Session manager initialized with encryption enabled")
     }
 
     /**
@@ -56,7 +84,7 @@ class AtProtoSessionManager(
         identifier: String,
         password: String
     ): Result<PlayerSession> = runCatching {
-        logger.info("Creating session for player $uuid with identifier $identifier")
+        logger.info("Creating session for player $uuid with identifier ${SecurityUtils.sanitizeForLog(identifier)}")
         
         // Create the session via AT Protocol
         val sessionResponse = client.createSession(identifier, password).getOrThrow()
@@ -92,10 +120,10 @@ class AtProtoSessionManager(
         
         // Check if session needs refresh (access tokens typically expire after 2 hours)
         // We'll refresh if it's been more than 1.5 hours to be safe
-        val hoursSinceRefresh = (System.currentTimeMillis() - session.lastRefreshed) / (1000 * 60 * 60)
+        val hoursSinceRefresh = (System.currentTimeMillis() - session.lastRefreshed) / (1000.0 * 60 * 60)
         
         if (hoursSinceRefresh >= 1.5) {
-            logger.info("Session for ${session.handle} needs refresh")
+            logger.info("Session for ${session.handle} needs refresh (${String.format("%.2f", hoursSinceRefresh)} hours old)")
             return refreshSession(uuid)
         }
         
@@ -125,6 +153,7 @@ class AtProtoSessionManager(
         sessions[uuid] = newSession
         save()
         
+        SecurityAuditor.logSessionRefresh(uuid, oldSession.handle)
         logger.info("Session refreshed successfully for ${oldSession.handle}")
         newSession
     }
@@ -178,12 +207,23 @@ class AtProtoSessionManager(
     }
 
     /**
-     * Loads sessions from disk.
+     * Loads sessions from disk with decryption.
+     * Supports both encrypted (v2) and legacy plain text (v1) formats.
      */
-    private fun load() {
+    private fun load() = fileLock.read {
         try {
             if (Files.exists(storageFile)) {
-                val content = Files.readString(storageFile)
+                val fileContent = Files.readString(storageFile)
+                
+                // Try to decrypt first (new format)
+                val content = try {
+                    SecurityUtils.decrypt(fileContent, encryptionKey)
+                } catch (e: Exception) {
+                    // If decryption fails, try parsing as plain JSON (legacy format)
+                    logger.warn("Failed to decrypt sessions, attempting plain text read (legacy format)")
+                    fileContent
+                }
+                
                 val storage = json.decodeFromString<SessionStorage>(content)
                 
                 storage.sessions.forEach { session ->
@@ -191,7 +231,13 @@ class AtProtoSessionManager(
                     sessions[uuid] = session
                 }
                 
-                logger.info("Loaded ${sessions.size} sessions from disk")
+                logger.info("Loaded ${sessions.size} sessions from disk (encrypted: ${storage.version >= 2})")
+                
+                // If we loaded legacy format, save in new encrypted format
+                if (storage.version < 2) {
+                    logger.info("Migrating sessions to encrypted format")
+                    save()
+                }
             } else {
                 logger.info("No existing session storage found, starting fresh")
             }
@@ -201,26 +247,42 @@ class AtProtoSessionManager(
     }
 
     /**
-     * Saves sessions to disk.
+     * Saves sessions to disk with encryption and proper file permissions.
+     * Uses atomic write pattern to prevent corruption.
      */
-    private fun save() {
+    private fun save() = fileLock.write {
         try {
             Files.createDirectories(storageFile.parent)
             
             val storage = SessionStorage(
-                version = 1,
+                version = 2, // Version 2 = encrypted
                 sessions = sessions.values.toList()
             )
             
+            // Serialize to JSON
             val content = json.encodeToString(storage)
+            
+            // Encrypt the entire content
+            val encrypted = SecurityUtils.encrypt(content, encryptionKey)
+            
+            // Atomic write: write to temp file, then rename
+            val tempFile = storageFile.parent.resolve("${storageFile.fileName}.tmp")
             Files.writeString(
-                storageFile,
-                content,
+                tempFile,
+                encrypted,
                 StandardOpenOption.CREATE,
                 StandardOpenOption.TRUNCATE_EXISTING
             )
             
-            logger.debug("Saved ${sessions.size} sessions to disk")
+            // Set restricted permissions on temp file
+            SecurityUtils.setRestrictedPermissions(tempFile)
+            
+            // Atomic rename
+            Files.move(tempFile, storageFile, 
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+            
+            logger.debug("Saved ${sessions.size} encrypted sessions to disk")
         } catch (e: Exception) {
             logger.error("Failed to save sessions", e)
         }
