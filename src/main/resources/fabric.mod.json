@@ -1,15 +1,17 @@
 {
 	"schemaVersion": 1,
 	"id": "atproto-connect",
-	"version": "${version}",
-	"name": "atproto-connect",
-	"description": "This is an example description! Tell everyone what your mod is about!",
+	"version": "0.3.0",
+	"name": "ATProto Connect",
+	"description": "A Fabric mod that links Minecraft players to AT Protocol identities, enabling secure authentication and future decentralised data syncing.",
 	"authors": [
-		"Me!"
+		"ewancroft.uk",
+		"jollywhoppers.com"
 	],
 	"contact": {
-		"homepage": "https://fabricmc.net/",
-		"sources": "https://github.com/FabricMC/fabric-example-mod"
+		"homepage": "https://tangled.org/did:plc:ofrbh253gwicbkc5nktqepol/atproto-connect",
+		"sources": "https://tangled.org/did:plc:ofrbh253gwicbkc5nktqepol/atproto-connect",
+		"issues": "https://tangled.org/did:plc:ofrbh253gwicbkc5nktqepol/atproto-connect/issues"
 	},
 	"license": "CC0-1.0",
 	"icon": "assets/atproto-connect/icon.png",
