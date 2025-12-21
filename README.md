@@ -287,7 +287,7 @@ All security-sensitive operations are logged to `config/atproto-connect/security
 
 All configuration files are stored in `config/atproto-connect/`:
 
-- **`player-identities.json`** - UUID to DID/handle mappings (plaintext)
+- **`player-identities.json`** - UUID to DID/handle mappings (plaintext as these are both publicly accessible anyway)
 - **`player-sessions.json`** - Encrypted authentication sessions
 - **`.encryption.key`** - AES-256 encryption key (auto-generated, keep secure!)
 - **`security-audit.log`** - Security event log
