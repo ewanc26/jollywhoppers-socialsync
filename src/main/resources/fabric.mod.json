@@ -1,7 +1,7 @@
 {
 	"schemaVersion": 1,
 	"id": "atproto-connect",
-	"version": "0.3.0",
+	"version": "0.4.0",
 	"name": "ATProto Connect",
 	"description": "A Fabric mod that links Minecraft players to AT Protocol identities, enabling secure authentication and future decentralised data syncing.",
 	"authors": [

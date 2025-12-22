@@ -367,6 +367,6 @@ This is an experimental project exploring the intersection of decentralized prot
 
 ---
 
-**Version**: 0.3.0  
+**Version**: 0.4.0  
 **Repository**: `git@tangled.sh:ewancroft.uk/atproto-connect`  
 **Status**: Alpha - Not Production Ready
