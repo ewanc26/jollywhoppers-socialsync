@@ -1,10 +1,10 @@
 package com.jollywhoppers
 
-import com.jollywhoppers.atproto.AtProtoClient
-import com.jollywhoppers.atproto.AtProtoCommands
-import com.jollywhoppers.atproto.AtProtoSessionManager
-import com.jollywhoppers.atproto.PlayerIdentityStore
-import com.jollywhoppers.atproto.security.SecurityAuditor
+import com.jollywhoppers.atproto.server.AtProtoClient
+import com.jollywhoppers.atproto.server.AtProtoCommands
+import com.jollywhoppers.atproto.server.AtProtoSessionManager
+import com.jollywhoppers.atproto.server.PlayerIdentityStore
+import com.jollywhoppers.security.SecurityAuditor
 import net.fabricmc.api.ModInitializer
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents

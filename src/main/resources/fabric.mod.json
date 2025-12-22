@@ -28,6 +28,12 @@
 				"value": "com.jollywhoppers.AtprotoconnectClient",
 				"adapter": "kotlin"
 			}
+		],
+		"modmenu": [
+			{
+				"value": "com.jollywhoppers.config.ModMenuIntegration",
+				"adapter": "kotlin"
+			}
 		]
 	},
 	"mixins": [

@@ -1,4 +1,4 @@
-package com.jollywhoppers.atproto.security
+package com.jollywhoppers.security
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString

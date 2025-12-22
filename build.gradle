@@ -18,6 +18,21 @@ repositories {
 	// Loom adds the essential maven repositories to download Minecraft and libraries from automatically.
 	// See https://docs.gradle.org/current/userguide/declaring_repositories.html
 	// for more information about repositories.
+	
+	// Modrinth Maven for Mod Menu
+	maven {
+		name = "Modrinth"
+		url = "https://api.modrinth.com/maven"
+	}
+}
+
+// Create a common source set for shared code
+sourceSets {
+	common {
+		kotlin {
+			srcDir 'src/common/kotlin'
+		}
+	}
 }
 
 loom {
@@ -27,6 +42,7 @@ loom {
 		"atproto-connect" {
 			sourceSet sourceSets.main
 			sourceSet sourceSets.client
+			sourceSet sourceSets.common
 		}
 	}
 
@@ -41,6 +57,13 @@ dependencies {
 	// Fabric API. This is technically optional, but you probably want it anyway.
 	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 	modImplementation "net.fabricmc:fabric-language-kotlin:${project.fabric_kotlin_version}"
+	
+	// Mod Menu for configuration UI (from Modrinth)
+	modImplementation "maven.modrinth:modmenu:11.0.3"
+	
+	// Make main and client depend on common
+	implementation sourceSets.common.output
+	clientImplementation sourceSets.common.output
 }
 
 processResources {

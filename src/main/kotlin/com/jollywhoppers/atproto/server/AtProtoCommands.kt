@@ -1,8 +1,8 @@
-package com.jollywhoppers.atproto
+package com.jollywhoppers.atproto.server
 
-import com.jollywhoppers.atproto.security.RateLimiter
-import com.jollywhoppers.atproto.security.SecurityAuditor
-import com.jollywhoppers.atproto.security.SecurityUtils
+import com.jollywhoppers.security.RateLimiter
+import com.jollywhoppers.security.SecurityAuditor
+import com.jollywhoppers.security.SecurityUtils
 import com.mojang.brigadier.CommandDispatcher
 import com.mojang.brigadier.arguments.StringArgumentType
 import com.mojang.brigadier.context.CommandContext

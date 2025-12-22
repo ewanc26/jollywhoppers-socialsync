@@ -1,7 +1,7 @@
-package com.jollywhoppers.atproto
+package com.jollywhoppers.atproto.server
 
-import com.jollywhoppers.atproto.security.SecurityUtils
-import com.jollywhoppers.atproto.security.SecurityAuditor
+import com.jollywhoppers.security.SecurityUtils
+import com.jollywhoppers.security.SecurityAuditor
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString

@@ -1,6 +1,7 @@
-package com.jollywhoppers.atproto
+package com.jollywhoppers.atproto.client
 
 import com.jollywhoppers.network.AtProtoPackets
+import com.jollywhoppers.screen.AtProtoConfigScreen
 import com.mojang.brigadier.CommandDispatcher
 import com.mojang.brigadier.arguments.StringArgumentType
 import com.mojang.brigadier.context.CommandContext
@@ -51,6 +52,14 @@ class ClientAtProtoCommands(
                 .then(
                     ClientCommandManager.literal("help")
                         .executes { context -> help(context) }
+                )
+                .then(
+                    ClientCommandManager.literal("config")
+                        .executes { context -> openConfigScreen(context) }
+                )
+                .then(
+                    ClientCommandManager.literal("gui")
+                        .executes { context -> openConfigScreen(context) }
                 )
                 .executes { context -> help(context) }
         )
@@ -153,13 +162,27 @@ class ClientAtProtoCommands(
     }
 
     /**
+     * Opens the configuration/login screen.
+     */
+    private fun openConfigScreen(context: CommandContext<FabricClientCommandSource>): Int {
+        Minecraft.getInstance().execute {
+            Minecraft.getInstance().setScreen(AtProtoConfigScreen(Minecraft.getInstance().screen))
+        }
+        return 1
+    }
+    
+    /**
      * Shows help information.
      */
     private fun help(context: CommandContext<FabricClientCommandSource>): Int {
         context.source.sendFeedback(
             Component.literal("§b━━━ AT Protocol Commands (Client-Side) ━━━")
+                .append(Component.literal("\n§f/atproto config §7or §f/atproto gui"))
+                .append(Component.literal("\n  §7Open the settings GUI (Recommended!)"))
+                .append(Component.literal("\n  §7Easy login interface with no typing needed"))
+                .append(Component.literal("\n"))
                 .append(Component.literal("\n§f/atproto login <handle> <app-password>"))
-                .append(Component.literal("\n  §7Authenticate with your AT Protocol account"))
+                .append(Component.literal("\n  §7Authenticate via command (if you prefer)"))
                 .append(Component.literal("\n  §7Example: §f/atproto login alice.bsky.social my-app-password"))
                 .append(Component.literal("\n  §c§lIMPORTANT: Use an App Password, not your main password!"))
                 .append(Component.literal("\n  §7Get one from: Settings → App Passwords → Add App Password"))
@@ -170,6 +193,7 @@ class ClientAtProtoCommands(
                 .append(Component.literal("\n§f/atproto status"))
                 .append(Component.literal("\n  §7Check your authentication status"))
                 .append(Component.literal("\n"))
+                .append(Component.literal("\n§e💡 Tip: You can also access settings via Mod Menu!"))
                 .append(Component.literal("\n§eNote: Authentication happens entirely on your computer."))
                 .append(Component.literal("\n§eYour password never leaves your machine!"))
         )

@@ -1,4 +1,4 @@
-package com.jollywhoppers.atproto.security
+package com.jollywhoppers.security
 
 import org.slf4j.LoggerFactory
 import java.nio.file.Files

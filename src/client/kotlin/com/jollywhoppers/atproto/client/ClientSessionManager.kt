@@ -1,4 +1,4 @@
-package com.jollywhoppers.atproto
+package com.jollywhoppers.atproto.client
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
