@@ -74,6 +74,16 @@ class ClientAtProtoClient(
         val refreshJwt: String
     )
 
+    // Extended response that includes the PDS URL
+    data class ExtendedSessionResponse(
+        val did: String,
+        val handle: String,
+        val email: String?,
+        val accessJwt: String,
+        val refreshJwt: String,
+        val pdsUrl: String
+    )
+
     @Serializable
     data class RefreshSessionRequest(
         val refreshJwt: String
@@ -177,7 +187,7 @@ class ClientAtProtoClient(
      * This uses OFFICIAL identity resolution to find the user's PDS, then authenticates there.
      * Password is never sent to your Minecraft server - only to AT Protocol servers.
      */
-    suspend fun createSession(identifier: String, password: String): Result<CreateSessionResponse> = runCatching {
+    suspend fun createSession(identifier: String, password: String): Result<ExtendedSessionResponse> = runCatching {
         logger.info("Creating session for: ${sanitize(identifier)}")
         
         // Step 1: Resolve identifier to find PDS
@@ -235,9 +245,18 @@ class ClientAtProtoClient(
             throw Exception(errorMessage)
         }
 
-        val session = json.decodeFromString<CreateSessionResponse>(response.body())
+        val sessionResponse = json.decodeFromString<CreateSessionResponse>(response.body())
         logger.info("Session created successfully")
-        session
+        
+        // Return extended response with PDS URL
+        ExtendedSessionResponse(
+            did = sessionResponse.did,
+            handle = sessionResponse.handle,
+            email = sessionResponse.email,
+            accessJwt = sessionResponse.accessJwt,
+            refreshJwt = sessionResponse.refreshJwt,
+            pdsUrl = pdsUrl
+        )
     }
 
     /**

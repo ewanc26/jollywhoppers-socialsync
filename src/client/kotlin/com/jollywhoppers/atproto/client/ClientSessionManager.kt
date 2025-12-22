@@ -70,13 +70,10 @@ class ClientSessionManager(
         // Authenticate with AT Protocol servers directly
         val sessionResponse = client.createSession(identifier, password).getOrThrow()
         
-        // Resolve to get PDS URL
-        val miniDoc = client.resolveMiniDoc(sessionResponse.did).getOrThrow()
-        
         val session = PlayerSession(
             did = sessionResponse.did,
             handle = sessionResponse.handle,
-            pdsUrl = miniDoc.pds,
+            pdsUrl = sessionResponse.pdsUrl,
             accessJwt = sessionResponse.accessJwt,
             refreshJwt = sessionResponse.refreshJwt,
             createdAt = System.currentTimeMillis(),

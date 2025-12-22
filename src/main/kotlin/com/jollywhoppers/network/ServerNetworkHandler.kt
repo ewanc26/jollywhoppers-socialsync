@@ -1,7 +1,7 @@
 package com.jollywhoppers.network
 
 import com.jollywhoppers.Atprotoconnect
-import com.jollywhoppers.atproto.security.SecurityAuditor
+import com.jollywhoppers.security.SecurityAuditor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
