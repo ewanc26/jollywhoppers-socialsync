@@ -6,6 +6,16 @@ A Fabric mod for Minecraft 1.21.10 that bridges the game with the AT Protocol, e
 
 **This project is in active development and is NOT ready for production use.** Identity linking and authentication are now fully implemented with enterprise-grade security features. Stat syncing and other data collection features are planned but not yet implemented.
 
+## Affiliation & Hosting
+
+This mod started out as a personal project by **Ewan Croft** — I built the early versions on my own while experimenting with Minecraft and the AT Protocol.
+
+Later on, I joined the **Jolly Whoppers** coding group and the project became part of the group in that sense — shared context, shared people, same general ecosystem — but the repo itself is still under my own AT Protocol DID.
+
+The code lives at **[https://tangled.org/ewancroft.uk/atproto-connect](https://tangled.org/ewancroft.uk/atproto-connect)**, which corresponds to my AT Protocol DID (**`did:plc:ofrbh253gwicbkc5nktqepol`**). The project is associated with Jolly Whoppers (group DID **[`did:plc:lwckcyzhyrufq4ytg2abji7d`](https://tangled.org/did:plc:lwckcyzhyrufq4ytg2abji7d)**), but it’s not moved under the group’s DID.
+
+The project is hosted on **[Tangled](https://tangled.org/)**. I don’t run the infrastructure — I just started the project and maintain it.
+
 ## Overview
 
 atproto-connect aims to integrate Minecraft gameplay with the AT Protocol (the protocol powering Bluesky), allowing game data to be synced to AT Protocol lexicons. This enables decentralized storage and sharing of Minecraft data across the federated network.
@@ -18,13 +28,13 @@ Players can link their Minecraft accounts to their AT Protocol identities and au
 
 **Basic Commands:**
 
-- **`/atproto link <handle or DID>`** - Link your Minecraft UUID to your AT Protocol identity (no login required)
-- **`/atproto login <handle> <app-password>`** - Authenticate to enable data syncing
-- **`/atproto logout`** - Remove authentication (keeps identity link)
-- **`/atproto unlink`** - Remove identity link and authentication
-- **`/atproto whoami`** - View your linked identity and auth status
-- **`/atproto status`** - Quick status check
-- **`/atproto whois <player or handle>`** - Look up another player's identity
+* **`/atproto link <handle or DID>`** - Link your Minecraft UUID to your AT Protocol identity (no login required)
+* **`/atproto login <handle> <app-password>`** - Authenticate to enable data syncing
+* **`/atproto logout`** - Remove authentication (keeps identity link)
+* **`/atproto unlink`** - Remove identity link and authentication
+* **`/atproto whoami`** - View your linked identity and auth status
+* **`/atproto status`** - Quick status check
+* **`/atproto whois <player or handle>`** - Look up another player's identity
 
 **Example Workflow:**
 
@@ -57,26 +67,26 @@ You can sync data to AT Protocol
 
 The mod implements enterprise-grade security measures to protect player data and prevent abuse:
 
-- **AES-256-GCM Encryption**: Session data encrypted at rest with server-specific keys
-- **Rate Limiting**: 3 authentication attempts per 15 minutes, 30-minute lockout on abuse
-- **Security Audit Logging**: All sensitive operations logged for monitoring
-- **Sanitized Error Messages**: No sensitive data exposed in error messages or logs
-- **Restricted File Permissions**: Owner-only access to configuration files
-- **Atomic File Writes**: Prevents corruption during saves
-- **Thread-Safe Operations**: Concurrent access protection for all shared data
-- **Automatic Token Refresh**: Access tokens refreshed before expiration
-- **Path Validation**: Protection against directory traversal attacks
+* **AES-256-GCM Encryption**: Session data encrypted at rest with server-specific keys
+* **Rate Limiting**: 3 authentication attempts per 15 minutes, 30-minute lockout on abuse
+* **Security Audit Logging**: All sensitive operations logged for monitoring
+* **Sanitized Error Messages**: No sensitive data exposed in error messages or logs
+* **Restricted File Permissions**: Owner-only access to configuration files
+* **Atomic File Writes**: Prevents corruption during saves
+* **Thread-Safe Operations**: Concurrent access protection for all shared data
+* **Automatic Token Refresh**: Access tokens refreshed before expiration
+* **Path Validation**: Protection against directory traversal attacks
 
 All passwords are handled securely - app passwords are never logged or stored (only the resulting JWT tokens are kept).
 
 ### Key Features
 
-- **Slingshot Integration**: Uses [Slingshot by Microcosm](https://slingshot.microcosm.blue) for fast, cached PDS resolution
-- **App Password Support**: Secure authentication using AT Protocol app passwords (never use your main password!)
-- **Automatic Token Refresh**: Access tokens are automatically refreshed before expiration
-- **Multi-PDS Support**: Works with any AT Protocol PDS, not just Bluesky
-- **Persistent Sessions**: Authentication survives server restarts
-- **Encrypted Storage**: Session data protected with AES-256-GCM encryption
+* **Slingshot Integration**: Uses [Slingshot by Microcosm](https://slingshot.microcosm.blue) for fast, cached PDS resolution
+* **App Password Support**: Secure authentication using AT Protocol app passwords (never use your main password!)
+* **Automatic Token Refresh**: Access tokens are automatically refreshed before expiration
+* **Multi-PDS Support**: Works with any AT Protocol PDS, not just Bluesky
+* **Persistent Sessions**: Authentication survives server restarts
+* **Encrypted Storage**: Session data protected with AES-256-GCM encryption
 
 ### Getting an App Password
 
@@ -88,27 +98,28 @@ All passwords are handled securely - app passwords are never logged or stored (o
 
 ### Future Possibilities
 
-- Automatic stat syncing at configurable intervals
-- Achievement announcements via AT Protocol feeds
-- Cross-server player reputation systems
-- Privacy controls for what data gets synced
-- In-game social features tied to AT Protocol identities
+* Automatic stat syncing at configurable intervals
+* Achievement announcements via AT Protocol feeds
+* Cross-server player reputation systems
+* Privacy controls for what data gets synced
+* In-game social features tied to AT Protocol identities
 
 ## Technical Stack
 
-- **Minecraft Version**: 1.21.10
-- **Mod Loader**: Fabric API
-- **Protocol**: AT Protocol (atproto)
-- **Language**: Kotlin (with Java interop)
-- **Build System**: Gradle 8.x
-- **Dependencies**:
-  - Fabric Loader 0.18.3
-  - Fabric API 0.138.4+1.21.10
-  - Fabric Language Kotlin 1.13.8+kotlin.2.3.0
-  - kotlinx-serialization for JSON handling
-  - kotlinx-coroutines for async operations
-- **Identity Resolution**: [Slingshot](https://slingshot.microcosm.blue) by Microcosm
-- **Authentication**: AT Protocol OAuth/App Passwords
+* **Minecraft Version**: 1.21.10
+* **Mod Loader**: Fabric API
+* **Protocol**: AT Protocol (atproto)
+* **Language**: Kotlin (with Java interop)
+* **Build System**: Gradle 8.x
+* **Dependencies**:
+
+  * Fabric Loader 0.18.3
+  * Fabric API 0.138.4+1.21.10
+  * Fabric Language Kotlin 1.13.8+kotlin.2.3.0
+  * kotlinx-serialization for JSON handling
+  * kotlinx-coroutines for async operations
+* **Identity Resolution**: [Slingshot](https://slingshot.microcosm.blue) by Microcosm
+* **Authentication**: AT Protocol OAuth/App Passwords
 
 ## Installation
 
@@ -177,12 +188,12 @@ src/main/
 
 The mod defines several AT Protocol lexicon schemas under the `com.jollywhoppers.minecraft.*` namespace:
 
-- **Player Profile** (`literal:self`) - Links Minecraft UUIDs to AT Protocol DIDs with privacy controls
-- **Player Stats** (`tid`) - Snapshots of player statistics for leaderboards
-- **Player Sessions** (`tid`) - Play session tracking (join/leave times)
-- **Achievements** (`tid`) - Records of earned achievements/advancements
-- **Leaderboards** (`tid`) - Pre-computed leaderboard entries
-- **Server Status** (`literal:self`) - Server information and status
+* **Player Profile** (`literal:self`) - Links Minecraft UUIDs to AT Protocol DIDs with privacy controls
+* **Player Stats** (`tid`) - Snapshots of player statistics for leaderboards
+* **Player Sessions** (`tid`) - Play session tracking (join/leave times)
+* **Achievements** (`tid`) - Records of earned achievements/advancements
+* **Leaderboards** (`tid`) - Pre-computed leaderboard entries
+* **Server Status** (`literal:self`) - Server information and status
 
 See `src/main/resources/lexicons/README.md` for detailed schema documentation.
 
@@ -243,76 +254,76 @@ Local Storage
 
 **For Players:**
 
-- **Always use App Passwords**, never main account passwords
-- Create a unique app password for each Minecraft server
-- Revoke unused app passwords regularly
-- If you suspect compromise, revoke the app password immediately
+* **Always use App Passwords**, never main account passwords
+* Create a unique app password for each Minecraft server
+* Revoke unused app passwords regularly
+* If you suspect compromise, revoke the app password immediately
 
 **For Server Operators:**
 
-- Secure the `config/atproto-connect/` directory with appropriate file permissions
-- Monitor `security-audit.log` for suspicious activity
-- Keep the `.encryption.key` file secure (never share or commit to version control)
-- Regular backups of configuration files
-- Update the mod regularly for security patches
+* Secure the `config/atproto-connect/` directory with appropriate file permissions
+* Monitor `security-audit.log` for suspicious activity
+* Keep the `.encryption.key` file secure (never share or commit to version control)
+* Regular backups of configuration files
+* Update the mod regularly for security patches
 
 ### Token Storage
 
-- **Location**: `config/atproto-connect/player-sessions.json`
-- **Encryption**: AES-256-GCM with server-specific key
-- **Contents**: Access and refresh JWTs for authenticated players
-- **Security**: Encrypted at rest, owner-only file permissions
-- **Lifetime**: Access tokens expire after ~2 hours, refresh tokens last longer
+* **Location**: `config/atproto-connect/player-sessions.json`
+* **Encryption**: AES-256-GCM with server-specific key
+* **Contents**: Access and refresh JWTs for authenticated players
+* **Security**: Encrypted at rest, owner-only file permissions
+* **Lifetime**: Access tokens expire after ~2 hours, refresh tokens last longer
 
 ### Rate Limiting
 
 To prevent brute-force attacks:
 
-- **Maximum Attempts**: 3 failed login attempts
-- **Time Window**: 15 minutes
-- **Lockout Duration**: 30 minutes after exceeding limit
-- **Tracking**: Per-player UUID and per-identifier
+* **Maximum Attempts**: 3 failed login attempts
+* **Time Window**: 15 minutes
+* **Lockout Duration**: 30 minutes after exceeding limit
+* **Tracking**: Per-player UUID and per-identifier
 
 ### Security Audit Log
 
 All security-sensitive operations are logged to `config/atproto-connect/security-audit.log`:
 
-- Authentication attempts (success/failure)
-- Rate limit violations
-- Session creation/deletion
-- Token refresh operations
-- Security errors
+* Authentication attempts (success/failure)
+* Rate limit violations
+* Session creation/deletion
+* Token refresh operations
+* Security errors
 
 ## Configuration Files
 
 All configuration files are stored in `config/atproto-connect/`:
 
-- **`player-identities.json`** - UUID to DID/handle mappings (plaintext as these are both publicly accessible anyway)
-- **`player-sessions.json`** - Encrypted authentication sessions
-- **`.encryption.key`** - AES-256 encryption key (auto-generated, keep secure!)
-- **`security-audit.log`** - Security event log
+* **`player-identities.json`** - UUID to DID/handle mappings (plaintext as these are both publicly accessible anyway)
+* **`player-sessions.json`** - Encrypted authentication sessions
+* **`.encryption.key`** - AES-256 encryption key (auto-generated, keep secure!)
+* **`security-audit.log`** - Security event log
 
 **Important**: Never commit `.encryption.key` or `player-sessions.json` to version control!
 
 ## Development Roadmap
 
-- [x] Design lexicon schemas for Minecraft data types
-- [x] Implement AT Protocol client with Slingshot integration
-- [x] Create identity linking system
-- [x] Implement authentication with app passwords
-- [x] Build session management with automatic token refresh
-- [x] Add encryption for session storage
-- [x] Implement rate limiting and security auditing
-- [ ] Build data collection hooks for player statistics
-- [ ] Implement authenticated record creation (writing stats)
-- [ ] Add automatic stat syncing at configurable intervals
-- [ ] Add privacy controls and data filtering options
-- [ ] Create example AppView for displaying Minecraft data
-- [ ] Implement OAuth device flow for better UX
-- [ ] Add DPoP support
-- [ ] Write comprehensive documentation
-- [ ] Add automated tests
-- [ ] Publish to Modrinth/CurseForge
+* [x] Design lexicon schemas for Minecraft data types
+* [x] Implement AT Protocol client with Slingshot integration
+* [x] Create identity linking system
+* [x] Implement authentication with app passwords
+* [x] Build session management with automatic token refresh
+* [x] Add encryption for session storage
+* [x] Implement rate limiting and security auditing
+* [ ] Build data collection hooks for player statistics
+* [ ] Implement authenticated record creation (writing stats)
+* [ ] Add automatic stat syncing at configurable intervals
+* [ ] Add privacy controls and data filtering options
+* [ ] Create example AppView for displaying Minecraft data
+* [ ] Implement OAuth device flow for better UX
+* [ ] Add DPoP support
+* [ ] Write comprehensive documentation
+* [ ] Add automated tests
+* [ ] Publish to Modrinth/CurseForge
 
 ## Contributing
 
@@ -329,21 +340,21 @@ Please follow Kotlin coding conventions and include tests for new features.
 
 ### AT Protocol
 
-- [AT Protocol Documentation](https://atproto.com/)
-- [Lexicon Specifications](https://atproto.com/specs/lexicon)
-- [XRPC API Reference](https://atproto.com/specs/xrpc)
-- [OAuth Specification](https://atproto.com/specs/oauth)
-- [Bluesky API Docs](https://docs.bsky.app/)
+* [AT Protocol Documentation](https://atproto.com/)
+* [Lexicon Specifications](https://atproto.com/specs/lexicon)
+* [XRPC API Reference](https://atproto.com/specs/xrpc)
+* [OAuth Specification](https://atproto.com/specs/oauth)
+* [Bluesky API Docs](https://docs.bsky.app/)
 
 ### Microcosm
 
-- [Slingshot Documentation](https://slingshot.microcosm.blue/)
-- [Microcosm Project](https://microcosm.blue/)
+* [Slingshot Documentation](https://slingshot.microcosm.blue/)
+* [Microcosm Project](https://microcosm.blue/)
 
 ### Minecraft Modding
 
-- [Fabric Documentation](https://fabricmc.net/wiki/)
-- [Fabric Language Kotlin](https://github.com/FabricMC/fabric-language-kotlin)
+* [Fabric Documentation](https://fabricmc.net/wiki/)
+* [Fabric Language Kotlin](https://github.com/FabricMC/fabric-language-kotlin)
 
 ## License
 
@@ -360,13 +371,13 @@ This is an experimental project exploring the intersection of decentralized prot
 
 ## Acknowledgments
 
-- [Microcosm](https://microcosm.blue) for Slingshot, which makes PDS resolution fast and reliable
-- The AT Protocol team for building an open, decentralized social network protocol
-- The Fabric community for excellent mod development tools
-- The Kotlin community for a great language and ecosystem
+* [Microcosm](https://microcosm.blue) for Slingshot, which makes PDS resolution fast and reliable
+* The AT Protocol team for building an open, decentralized social network protocol
+* The Fabric community for excellent mod development tools
+* The Kotlin community for a great language and ecosystem
 
 ---
 
-**Version**: 0.4.0  
-**Repository**: `git@tangled.sh:ewancroft.uk/atproto-connect`  
+**Version**: 0.4.0
+**Repository**: `git@tangled.sh:ewancroft.uk/atproto-connect`
 **Status**: Alpha - Not Production Ready
