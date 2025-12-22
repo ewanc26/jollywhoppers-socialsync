@@ -347,9 +347,12 @@ Please follow Kotlin coding conventions and include tests for new features.
 
 ## License
 
-[CC0-1.0](LICENSE) - Public Domain
+[AGPL-3.0](LICENSE) – GNU Affero General Public License v3
 
-This project is released into the public domain. You are free to use, modify, and distribute this software for any purpose without restriction.
+This project is free software: you may use, modify, and distribute it, including for commercial purposes.
+If you distribute this software or run it as a service accessible over a network, you must provide the complete corresponding source code, including any modifications, under the same licence.
+
+This ensures that improvements and extensions to the project remain open and available to the community.
 
 ## Disclaimer
 
