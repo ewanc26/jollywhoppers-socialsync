@@ -1,4 +1,4 @@
-# atproto-connect
+# Social Sync
 
 A Fabric mod for Minecraft 1.21.10 that bridges the game with the AT Protocol, enabling decentralized data synchronization and social features.
 
@@ -10,15 +10,15 @@ A Fabric mod for Minecraft 1.21.10 that bridges the game with the AT Protocol, e
 
 This mod started out as a personal project by **Ewan Croft** — I built the early versions on my own while experimenting with Minecraft and the AT Protocol.
 
-Later on, I joined the **Jolly Whoppers** coding group and the project became part of the group in that sense — shared context, shared people, same general ecosystem — but the repo itself is still under my own AT Protocol DID.
+Later on, I joined the **Jollywhoppers** coding group and the project became part of the group in that sense — shared context, shared people, same general ecosystem — but the repo itself is still under my own AT Protocol DID.
 
-The code lives at **[https://tangled.org/ewancroft.uk/atproto-connect](https://tangled.org/ewancroft.uk/atproto-connect)**, which corresponds to my AT Protocol DID (**`did:plc:ofrbh253gwicbkc5nktqepol`**). The project is associated with Jolly Whoppers (group DID **[`did:plc:lwckcyzhyrufq4ytg2abji7d`](https://tangled.org/did:plc:lwckcyzhyrufq4ytg2abji7d)**), but it’s not moved under the group’s DID.
+The code lives at **[https://tangled.org/jollywhoppers.com/socialsync](https://tangled.org/jollywhoppers.com/socialsync)**, which corresponds to my AT Protocol DID (**`did:plc:ofrbh253gwicbkc5nktqepol`**).
 
-The project is hosted on **[Tangled](https://tangled.org/)**. I don’t run the infrastructure — I just started the project and maintain it.
+The project is hosted on **[Tangled](https://tangled.org/)**.
 
 ## Overview
 
-atproto-connect aims to integrate Minecraft gameplay with the AT Protocol (the protocol powering Bluesky), allowing game data to be synced to AT Protocol lexicons. This enables decentralized storage and sharing of Minecraft data across the federated network.
+Social Sync aims to integrate Minecraft gameplay with the AT Protocol (the protocol powering Bluesky), allowing game data to be synced to AT Protocol lexicons. This enables decentralized storage and sharing of Minecraft data across the federated network.
 
 ## Current Features
 
@@ -128,7 +128,7 @@ All passwords are handled securely - app passwords are never logged or stored (o
 1. Install [Fabric Loader](https://fabricmc.net/use/) for Minecraft 1.21.10
 2. Download and install [Fabric API](https://modrinth.com/mod/fabric-api) version 0.138.4+1.21.10 or compatible
 3. Download and install [Fabric Language Kotlin](https://modrinth.com/mod/fabric-language-kotlin) version 1.13.8+kotlin.2.3.0 or compatible
-4. Place the atproto-connect JAR in your `mods` folder
+4. Place the social-sync JAR in your `mods` folder
 5. Launch the game and use `/atproto help` to see available commands
 
 ### For Developers
@@ -136,8 +136,8 @@ All passwords are handled securely - app passwords are never logged or stored (o
 Clone the repository:
 
 ```bash
-git clone git@tangled.sh:ewancroft.uk/atproto-connect
-cd atproto-connect
+git clone git@tangled.sh:jollywhoppers.com/socialsync
+cd socialsync
 ```
 
 Build the project:
@@ -379,5 +379,5 @@ This is an experimental project exploring the intersection of decentralized prot
 ---
 
 **Version**: 0.4.0
-**Repository**: `git@tangled.sh:ewancroft.uk/atproto-connect`
+**Repository**: `git@tangled.sh:jollywhoppers.com/socialsync`
 **Status**: Alpha - Not Production Ready
