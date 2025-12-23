@@ -10,9 +10,9 @@ A Fabric mod for Minecraft 1.21.10 that bridges the game with the AT Protocol, e
 
 This mod started out as a personal project by **Ewan Croft** — I built the early versions on my own while experimenting with Minecraft and the AT Protocol.
 
-Later on, I joined the **Jollywhoppers** coding group and the project became part of the group in that sense — shared context, shared people, same general ecosystem — but the repo itself is still under my own AT Protocol DID.
+The project is now maintained by the **Jollywhoppers** coding group as a whole.
 
-The code lives at **[https://tangled.org/jollywhoppers.com/socialsync](https://tangled.org/jollywhoppers.com/socialsync)**, which corresponds to my AT Protocol DID (**`did:plc:ofrbh253gwicbkc5nktqepol`**).
+The code lives at **[https://tangled.org/jollywhoppers.com/socialsync](https://tangled.org/jollywhoppers.com/socialsync)**.
 
 The project is hosted on **[Tangled](https://tangled.org/)**.
 
