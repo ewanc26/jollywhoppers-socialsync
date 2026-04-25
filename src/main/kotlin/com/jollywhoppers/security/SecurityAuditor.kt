@@ -57,6 +57,14 @@ object SecurityAuditor {
     fun logSuspiciousActivity(uuid: UUID?, message: String, ip: String? = null) {
         log("SUSPICIOUS", uuid, message, ip)
     }
+
+    fun logPrivacyChange(uuid: UUID, playerName: String, publicStats: Boolean? = null, publicSessions: Boolean? = null) {
+        val changes = buildString {
+            if (publicStats != null) append(" publicStats=$publicStats")
+            if (publicSessions != null) append(" publicSessions=$publicSessions")
+        }
+        log("PRIVACY_CHANGE", uuid, "Player $playerName changed privacy settings:$changes", null)
+    }
     
     private fun log(event: String, uuid: UUID?, message: String, ip: String?) {
         if (!initialized) {

@@ -1,9 +1,11 @@
 package com.jollywhoppers
 
+import com.jollywhoppers.atproto.server.AchievementSyncService
 import com.jollywhoppers.atproto.server.AtProtoClient
 import com.jollywhoppers.atproto.server.AtProtoCommands
 import com.jollywhoppers.atproto.server.AtProtoSessionManager
 import com.jollywhoppers.atproto.server.PlayerIdentityStore
+import com.jollywhoppers.atproto.server.PlayerProfileService
 import com.jollywhoppers.atproto.server.PlayerStatSyncService
 import com.jollywhoppers.atproto.server.RecordManager
 import com.jollywhoppers.security.SecurityAuditor
@@ -35,7 +37,13 @@ object Atprotoconnect : ModInitializer {
 
     lateinit var statSyncService: PlayerStatSyncService
         private set
-    
+
+    lateinit var profileService: PlayerProfileService
+        private set
+
+    lateinit var achievementSyncService: AchievementSyncService
+        private set
+
     lateinit var commands: AtProtoCommands
         private set
     
@@ -86,8 +94,25 @@ object Atprotoconnect : ModInitializer {
             )
             logger.info("Minecraft stat sync service initialized at: $statSyncStatePath")
 
+            // Initialize player profile service
+            profileService = PlayerProfileService(
+                recordManager = recordManager,
+                sessionManager = sessionManager,
+                identityStore = identityStore,
+            )
+            logger.info("Player profile service initialized")
+
+            // Initialize achievement sync service
+            achievementSyncService = AchievementSyncService(
+                recordManager = recordManager,
+                sessionManager = sessionManager,
+                identityStore = identityStore,
+            )
+            AchievementSyncService.INSTANCE = achievementSyncService
+            logger.info("Achievement sync service initialized")
+
             // Initialize command handler (with rate limiting and audit logging)
-            commands = AtProtoCommands(atProtoClient, identityStore, sessionManager)
+            commands = AtProtoCommands(atProtoClient, identityStore, sessionManager, profileService)
 
             // Register commands
             CommandRegistrationCallback.EVENT.register { dispatcher, _, _ ->
@@ -121,6 +146,9 @@ object Atprotoconnect : ModInitializer {
             logger.info("  ✓ Security audit logging")
             logger.info("  ✓ Enhanced SSRF protection")
             logger.info("  ✓ Automatic Minecraft stat syncing")
+            logger.info("  ✓ Privacy controls (stats/sessions visibility)")
+            logger.info("  ✓ Player profile record management")
+            logger.info("  ✓ Achievement syncing to AT Protocol")
             logger.info("Players can use /atproto help to see available commands")
             logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         } catch (e: Exception) {
@@ -155,6 +183,14 @@ object Atprotoconnect : ModInitializer {
         try {
             if (::statSyncService.isInitialized) {
                 statSyncService.shutdown()
+            }
+
+            if (::profileService.isInitialized) {
+                profileService.shutdown()
+            }
+
+            if (::achievementSyncService.isInitialized) {
+                achievementSyncService.shutdown()
             }
 
             // Shutdown scheduler
