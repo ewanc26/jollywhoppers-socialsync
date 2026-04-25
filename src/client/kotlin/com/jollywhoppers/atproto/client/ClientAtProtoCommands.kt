@@ -63,6 +63,21 @@ class ClientAtProtoCommands(
                         .executes { context -> status(context) }
                 )
                 .then(
+                    ClientCommandManager.literal("privacy")
+                        .executes { context -> privacyStatus(context) }
+                        .then(
+                            ClientCommandManager.argument("setting", StringArgumentType.string())
+                                .suggests { _, builder ->
+                                    builder.suggest("stats public")
+                                    builder.suggest("stats private")
+                                    builder.suggest("sessions public")
+                                    builder.suggest("sessions private")
+                                    builder.buildFuture()
+                                }
+                                .executes { context -> setPrivacy(context) }
+                        )
+                )
+                .then(
                     ClientCommandManager.literal("help")
                         .executes { context -> help(context) }
                 )
@@ -251,6 +266,77 @@ class ClientAtProtoCommands(
         Minecraft.getInstance().execute {
             Minecraft.getInstance().setScreen(AtProtoConfigScreen(Minecraft.getInstance().screen))
         }
+        return 1
+    }
+
+    /**
+     * Shows current privacy settings.
+     * Note: Privacy settings are stored server-side, so this shows the
+     * current session's auth type and reminds the user to use server commands.
+     */
+    private fun privacyStatus(context: CommandContext<FabricClientCommandSource>): Int {
+        val hasSession = sessionManager.hasSession()
+        val isOAuth = sessionManager.isOAuthSession()
+
+        context.source.sendFeedback(
+            Component.literal("§b━━━ Privacy Settings ━━━")
+                .append(
+                    if (hasSession) {
+                        Component.literal("\n§7Auth type: §f${if (isOAuth) "OAuth" else "App Password"}")
+                            .append(Component.literal("\n§7OAuth sessions use scoped permissions"))
+                            .append(Component.literal("\n§7for better privacy control"))
+                    } else {
+                        Component.literal("\n§cNot logged in")
+                    }
+                )
+                .append(Component.literal("\n"))
+                .append(Component.literal("\n§eNote: Privacy settings for stats and sessions"))
+                .append(Component.literal("\n§eare managed on the server side:"))
+                .append(Component.literal("\n§f/atproto privacy"))
+                .append(Component.literal("\n§f/atproto privacy stats <public|private>"))
+                .append(Component.literal("\n§f/atproto privacy sessions <public|private>"))
+        )
+        return 1
+    }
+
+    /**
+     * Sets a privacy setting (client-side convenience that sends to server).
+     */
+    private fun setPrivacy(context: CommandContext<FabricClientCommandSource>): Int {
+        val setting = StringArgumentType.getString(context, "setting").lowercase()
+
+        // Parse the setting string
+        val parts = setting.split(" ", limit = 2)
+        if (parts.size != 2) {
+            context.source.sendError(
+                Component.literal("§cInvalid format. Use: stats <public|private> or sessions <public|private>")
+            )
+            return 0
+        }
+
+        val category = parts[0]
+        val visibility = parts[1]
+
+        if (category !in listOf("stats", "sessions")) {
+            context.source.sendError(
+                Component.literal("§cUnknown category: $category. Use: stats or sessions")
+            )
+            return 0
+        }
+
+        if (visibility !in listOf("public", "private")) {
+            context.source.sendError(
+                Component.literal("§cUnknown visibility: $visibility. Use: public or private")
+            )
+            return 0
+        }
+
+        // Privacy settings are server-side, so we inform the user
+        context.source.sendFeedback(
+            Component.literal("§ePrivacy settings are managed on the server side.")
+                .append(Component.literal("\n§7Run this command on the server instead:"))
+                .append(Component.literal("\n§f/atproto privacy $category $visibility"))
+        )
         return 1
     }
 

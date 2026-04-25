@@ -40,7 +40,9 @@ class PlayerIdentityStore(private val storageFile: Path) {
         val did: String,
         val handle: String,
         val linkedAt: Long = System.currentTimeMillis(),
-        val lastVerified: Long = System.currentTimeMillis()
+        val lastVerified: Long = System.currentTimeMillis(),
+        val publicStats: Boolean = true,
+        val publicSessions: Boolean = true,
     )
 
     @Serializable
@@ -140,6 +142,32 @@ class PlayerIdentityStore(private val storageFile: Path) {
             identities[uuid] = updated
             save()
         }
+    }
+
+    /**
+     * Updates privacy settings for a player's identity.
+     * @return The updated identity, or null if the player is not linked
+     */
+    fun updatePrivacy(uuid: UUID, publicStats: Boolean? = null, publicSessions: Boolean? = null): PlayerIdentity? {
+        val identity = identities[uuid] ?: return null
+        val updated = identity.copy(
+            publicStats = publicStats ?: identity.publicStats,
+            publicSessions = publicSessions ?: identity.publicSessions,
+            lastVerified = System.currentTimeMillis(),
+        )
+        identities[uuid] = updated
+        save()
+        logger.info("Updated privacy settings for $uuid: publicStats=${updated.publicStats}, publicSessions=${updated.publicSessions}")
+        return updated
+    }
+
+    /**
+     * Gets the privacy settings for a player.
+     * Returns null if the player is not linked.
+     */
+    fun getPrivacySettings(uuid: UUID): Pair<Boolean, Boolean>? {
+        val identity = identities[uuid] ?: return null
+        return Pair(identity.publicStats, identity.publicSessions)
     }
 
     /**

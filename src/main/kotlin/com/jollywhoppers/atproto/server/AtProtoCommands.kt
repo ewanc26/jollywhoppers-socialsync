@@ -30,7 +30,8 @@ import java.time.Instant
 class AtProtoCommands(
     private val client: AtProtoClient,
     private val identityStore: PlayerIdentityStore,
-    private val sessionManager: AtProtoSessionManager
+    private val sessionManager: AtProtoSessionManager,
+    private val profileService: PlayerProfileService? = null,
 ) {
     private val logger = LoggerFactory.getLogger("atproto-connect")
     private val coroutineScope = CoroutineScope(Dispatchers.IO)
@@ -77,6 +78,32 @@ class AtProtoCommands(
                 .then(
                     Commands.literal("status")
                         .executes { context -> status(context) }
+                )
+                .then(
+                    Commands.literal("privacy")
+                        .executes { context -> privacyStatus(context) }
+                        .then(
+                            Commands.literal("stats")
+                                .then(
+                                    Commands.literal("public")
+                                        .executes { context -> setPrivacy(context, publicStats = true) }
+                                )
+                                .then(
+                                    Commands.literal("private")
+                                        .executes { context -> setPrivacy(context, publicStats = false) }
+                                )
+                        )
+                        .then(
+                            Commands.literal("sessions")
+                                .then(
+                                    Commands.literal("public")
+                                        .executes { context -> setPrivacy(context, publicSessions = true) }
+                                )
+                                .then(
+                                    Commands.literal("private")
+                                        .executes { context -> setPrivacy(context, publicSessions = false) }
+                                )
+                        )
                 )
                 .executes { context -> help(context) }
         )
@@ -447,6 +474,95 @@ class AtProtoCommands(
     }
 
     /**
+     * Shows current privacy settings.
+     */
+    private fun privacyStatus(context: CommandContext<CommandSourceStack>): Int {
+        val player = context.source.playerOrException
+
+        if (!identityStore.isLinked(player.uuid)) {
+            context.source.sendFailure(
+                Component.literal("§cYou are not linked to an AT Protocol identity")
+                    .append(Component.literal("\n§7Use /atproto link <handle> to get started"))
+            )
+            return 0
+        }
+
+        val privacySettings = identityStore.getPrivacySettings(player.uuid)
+        if (privacySettings == null) {
+            context.source.sendFailure(Component.literal("§cCould not read privacy settings"))
+            return 0
+        }
+
+        val (publicStats, publicSessions) = privacySettings
+
+        context.source.sendSuccess(
+            {
+                Component.literal("§b━━━ Privacy Settings ━━━")
+                    .append(Component.literal("\n§7Stats visibility: ${if (publicStats) "§aPublic" else "§cPrivate"}"))
+                    .append(Component.literal("\n§7Session visibility: ${if (publicSessions) "§aPublic" else "§cPrivate"}"))
+                    .append(Component.literal("\n"))
+                    .append(Component.literal("\n§7Use §f/atproto privacy stats <public|private>"))
+                    .append(Component.literal("\n§7Use §f/atproto privacy sessions <public|private>"))
+            },
+            false
+        )
+        return 1
+    }
+
+    /**
+     * Sets a privacy setting.
+     */
+    private fun setPrivacy(
+        context: CommandContext<CommandSourceStack>,
+        publicStats: Boolean? = null,
+        publicSessions: Boolean? = null,
+    ): Int {
+        val player = context.source.playerOrException
+
+        if (!identityStore.isLinked(player.uuid)) {
+            context.source.sendFailure(
+                Component.literal("§cYou are not linked to an AT Protocol identity")
+            )
+            return 0
+        }
+
+        val updated = identityStore.updatePrivacy(player.uuid, publicStats, publicSessions)
+        if (updated == null) {
+            context.source.sendFailure(Component.literal("§cFailed to update privacy settings"))
+            return 0
+        }
+
+        val changes = buildString {
+            if (publicStats != null) {
+                append("\n§7Stats: ${if (updated.publicStats) "§aPublic" else "§cPrivate"}")
+            }
+            if (publicSessions != null) {
+                append("\n§7Sessions: ${if (updated.publicSessions) "§aPublic" else "§cPrivate"}")
+            }
+        }
+
+        context.source.sendSuccess(
+            {
+                Component.literal("§a✓ Privacy settings updated")
+                    .append(Component.literal(changes))
+            },
+            false
+        )
+
+        SecurityAuditor.logPrivacyChange(player.uuid, player.name.string, publicStats, publicSessions)
+
+        // Sync the player.profile record to reflect the privacy change
+        profileService?.let { service ->
+            val server = context.source.server
+            val serverId = buildServerId(server)
+            val serverName = server.getMotd().ifBlank { "Minecraft Server" }
+            service.syncProfile(player.uuid, serverId, serverName)
+        }
+
+        return 1
+    }
+
+    /**
      * Shows help information for AT Protocol commands.
      */
     private fun help(context: CommandContext<CommandSourceStack>): Int {
@@ -468,6 +584,13 @@ class AtProtoCommands(
                     .append(Component.literal("\n"))
                     .append(Component.literal("\n§f/atproto status"))
                     .append(Component.literal("\n  §7Check connection status"))
+                    .append(Component.literal("\n"))
+                    .append(Component.literal("\n§f/atproto privacy"))
+                    .append(Component.literal("\n  §7View your privacy settings"))
+                    .append(Component.literal("\n§f/atproto privacy stats <public|private>"))
+                    .append(Component.literal("\n  §7Control whether your stats are visible"))
+                    .append(Component.literal("\n§f/atproto privacy sessions <public|private>"))
+                    .append(Component.literal("\n  §7Control whether your sessions are visible"))
                     .append(Component.literal("\n"))
                     .append(Component.literal("\n§f/atproto whois <player or handle>"))
                     .append(Component.literal("\n  §7Look up another player's AT Protocol identity"))
@@ -530,5 +653,19 @@ class AtProtoCommands(
      */
     fun cleanup() {
         rateLimiter.cleanup()
+    }
+
+    /**
+     * Builds a deterministic server ID from the server directory path.
+     * Matches the implementation in PlayerStatSyncService.
+     */
+    private fun buildServerId(server: net.minecraft.server.MinecraftServer): String {
+        val serverPath = server.serverDirectory
+            .toAbsolutePath()
+            .normalize()
+            .toString()
+        val payload = "socialsync:$serverPath"
+        val digest = java.security.MessageDigest.getInstance("SHA-256").digest(payload.toByteArray(Charsets.UTF_8))
+        return digest.joinToString("") { byte -> "%02x".format(byte) }
     }
 }
