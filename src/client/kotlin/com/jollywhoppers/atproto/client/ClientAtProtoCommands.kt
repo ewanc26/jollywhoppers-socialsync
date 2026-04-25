@@ -1,5 +1,7 @@
 package com.jollywhoppers.atproto.client
 
+import com.jollywhoppers.Atprotoconnect
+import com.jollywhoppers.atproto.oauth.OAuthManager
 import com.jollywhoppers.network.AtProtoPackets
 import com.jollywhoppers.screen.AtProtoConfigScreen
 import com.mojang.brigadier.CommandDispatcher
@@ -18,9 +20,11 @@ import org.slf4j.LoggerFactory
 /**
  * Client-side AT Protocol commands.
  * Handles authentication locally without sending passwords to the server.
+ * Supports both OAuth (browser-based) and app-password login.
  */
 class ClientAtProtoCommands(
-    private val sessionManager: ClientSessionManager
+    private val sessionManager: ClientSessionManager,
+    private val oAuthManager: OAuthManager,
 ) {
     private val logger = LoggerFactory.getLogger("atproto-connect-client")
     private val coroutineScope = CoroutineScope(Dispatchers.IO)
@@ -33,12 +37,21 @@ class ClientAtProtoCommands(
             ClientCommandManager.literal("atproto")
                 .then(
                     ClientCommandManager.literal("login")
+                        // OAuth login: /atproto login <handle>
                         .then(
                             ClientCommandManager.argument("identifier", StringArgumentType.string())
                                 .then(
                                     ClientCommandManager.argument("password", StringArgumentType.greedyString())
-                                        .executes { context -> login(context) }
+                                        .executes { context -> loginWithAppPassword(context) }
                                 )
+                                .executes { context -> loginWithOAuth(context) }
+                        )
+                )
+                .then(
+                    ClientCommandManager.literal("oauth")
+                        .then(
+                            ClientCommandManager.argument("identifier", StringArgumentType.string())
+                                .executes { context -> loginWithOAuth(context) }
                         )
                 )
                 .then(
@@ -66,10 +79,72 @@ class ClientAtProtoCommands(
     }
 
     /**
-     * Client-side login command.
-     * Authenticates directly with AT Protocol servers, then sends session to Minecraft server.
+     * OAuth browser-based login.
+     * Opens the user's browser for ATProto OAuth authorization.
+     * No password is typed in Minecraft — authentication happens entirely in the browser.
      */
-    private fun login(context: CommandContext<FabricClientCommandSource>): Int {
+    private fun loginWithOAuth(context: CommandContext<FabricClientCommandSource>): Int {
+        val identifier = StringArgumentType.getString(context, "identifier")
+
+        context.source.sendFeedback(
+            Component.literal("§eOpening browser for AT Protocol OAuth...")
+                .append(Component.literal("\n§7Authorising as: §f$identifier"))
+                .append(Component.literal("\n§7Please complete login in your browser"))
+        )
+
+        coroutineScope.launch {
+            try {
+                val result = oAuthManager.authorize(identifier).getOrThrow()
+                val session = result.session
+
+                // Send authenticated session to server for verification
+                val packet = AtProtoPackets.AuthenticatePacket(
+                    did = session.did,
+                    handle = session.handle,
+                    pdsUrl = session.pdsUrl,
+                    accessJwt = session.accessToken,
+                    refreshJwt = session.refreshToken,
+                    authType = "oauth",
+                )
+
+                ClientPlayNetworking.send(packet)
+
+                // Store OAuth session locally
+                sessionManager.storeOAuthSession(session, result.dpopKeyPair)
+
+                Minecraft.getInstance().execute {
+                    Minecraft.getInstance().gui.chat.addMessage(
+                        Component.literal("§a✓ OAuth authorisation successful!")
+                            .append(Component.literal("\n§7Handle: §f${session.handle}"))
+                            .append(Component.literal("\n§7DID: §f${session.did}"))
+                            .append(Component.literal("\n§7PDS: §f${session.pdsUrl}"))
+                            .append(Component.literal("\n§7Scope: §f${session.scope}"))
+                            .append(Component.literal("\n§eWaiting for server confirmation..."))
+                    )
+                }
+
+                logger.info("OAuth authenticated as ${session.handle}, sent session to server")
+            } catch (e: Exception) {
+                Minecraft.getInstance().execute {
+                    Minecraft.getInstance().gui.chat.addMessage(
+                        Component.literal("§c✗ OAuth authorisation failed")
+                            .append(Component.literal("\n§7${e.message ?: "Unknown error"}"))
+                            .append(Component.literal("\n\n§7Try: §f/atproto login <handle> <app-password>"))
+                            .append(Component.literal("\n§7to use an app password instead"))
+                    )
+                }
+                logger.error("OAuth authorisation failed: ${e.javaClass.simpleName} - ${e.message}")
+            }
+        }
+
+        return 1
+    }
+
+    /**
+     * App-password login (fallback).
+     * Authenticates directly with AT Protocol servers using an app password.
+     */
+    private fun loginWithAppPassword(context: CommandContext<FabricClientCommandSource>): Int {
         val identifier = StringArgumentType.getString(context, "identifier")
         val password = StringArgumentType.getString(context, "password")
 
@@ -88,26 +163,31 @@ class ClientAtProtoCommands(
                     handle = session.handle,
                     pdsUrl = session.pdsUrl,
                     accessJwt = session.accessJwt,
-                    refreshJwt = session.refreshJwt
+                    refreshJwt = session.refreshJwt,
                 )
 
                 ClientPlayNetworking.send(packet)
 
-                Minecraft.getInstance().gui.chat.addMessage(
-                    Component.literal("§a✓ Authenticated locally!")
-                        .append(Component.literal("\n§7Handle: §f${session.handle}"))
-                        .append(Component.literal("\n§7DID: §f${session.did}"))
-                        .append(Component.literal("\n§7Waiting for server confirmation..."))
-                )
+                Minecraft.getInstance().execute {
+                    Minecraft.getInstance().gui.chat.addMessage(
+                        Component.literal("§a✓ Authenticated locally!")
+                            .append(Component.literal("\n§7Handle: §f${session.handle}"))
+                            .append(Component.literal("\n§7DID: §f${session.did}"))
+                            .append(Component.literal("\n§7Waiting for server confirmation..."))
+                    )
+                }
 
                 logger.info("Authenticated as ${session.handle}, sent session to server")
             } catch (e: Exception) {
-                Minecraft.getInstance().gui.chat.addMessage(
-                    Component.literal("§c✗ Authentication failed")
-                        .append(Component.literal("\n§7${e.message ?: "Unknown error"}"))
-                        .append(Component.literal("\n\n§7Tip: Use an §fApp Password§7 from your AT Protocol account"))
-                        .append(Component.literal("\n§cNever use your main account password!"))
-                )
+                Minecraft.getInstance().execute {
+                    Minecraft.getInstance().gui.chat.addMessage(
+                        Component.literal("§c✗ Authentication failed")
+                            .append(Component.literal("\n§7${e.message ?: "Unknown error"}"))
+                            .append(Component.literal("\n\n§7Tip: Use an §fApp Password§7 from your AT Protocol account"))
+                            .append(Component.literal("\n§cNever use your main account password!"))
+                            .append(Component.literal("\n\n§7Or try OAuth: §f/atproto login <handle>"))
+                    )
+                }
                 logger.error("Authentication failed: ${e.javaClass.simpleName} - ${e.message}")
             }
         }
@@ -145,16 +225,19 @@ class ClientAtProtoCommands(
      */
     private fun status(context: CommandContext<FabricClientCommandSource>): Int {
         val hasSession = sessionManager.hasSession()
+        val isOAuth = sessionManager.isOAuthSession()
 
         context.source.sendFeedback(
             Component.literal("§b━━━ AT Protocol Status ━━━")
                 .append(
                     if (hasSession) {
-                        Component.literal("\n§aAuthentication: §f✓ Logged in locally")
+                        val authType = if (isOAuth) "OAuth" else "App Password"
+                        Component.literal("\n§aAuthentication: §f✓ Logged in ($authType)")
                             .append(Component.literal("\n§7Session stored on your computer"))
                     } else {
                         Component.literal("\n§cAuthentication: §f✗ Not logged in")
-                            .append(Component.literal("\n§7Use §f/atproto login§7 to authenticate"))
+                            .append(Component.literal("\n§7Use §f/atproto login <handle>§7 for OAuth"))
+                            .append(Component.literal("\n§7Use §f/atproto login <handle> <password>§7 for app password"))
                     }
                 )
         )
@@ -170,7 +253,7 @@ class ClientAtProtoCommands(
         }
         return 1
     }
-    
+
     /**
      * Shows help information.
      */
@@ -181,11 +264,19 @@ class ClientAtProtoCommands(
                 .append(Component.literal("\n  §7Open the settings GUI (Recommended!)"))
                 .append(Component.literal("\n  §7Easy login interface with no typing needed"))
                 .append(Component.literal("\n"))
+                .append(Component.literal("\n§f/atproto login <handle>"))
+                .append(Component.literal("\n  §7OAuth browser login (Recommended!)"))
+                .append(Component.literal("\n  §7Opens your browser for secure authorisation"))
+                .append(Component.literal("\n  §7No password needed in Minecraft"))
+                .append(Component.literal("\n  §7Example: §f/atproto login alice.bsky.social"))
+                .append(Component.literal("\n"))
                 .append(Component.literal("\n§f/atproto login <handle> <app-password>"))
-                .append(Component.literal("\n  §7Authenticate via command (if you prefer)"))
-                .append(Component.literal("\n  §7Example: §f/atproto login alice.bsky.social my-app-password"))
+                .append(Component.literal("\n  §7App password login (fallback)"))
+                .append(Component.literal("\n  §7Example: §f/atproto login alice.bsky.social abcd-1234"))
                 .append(Component.literal("\n  §c§lIMPORTANT: Use an App Password, not your main password!"))
-                .append(Component.literal("\n  §7Get one from: Settings → App Passwords → Add App Password"))
+                .append(Component.literal("\n"))
+                .append(Component.literal("\n§f/atproto oauth <handle>"))
+                .append(Component.literal("\n  §7Explicit OAuth login command"))
                 .append(Component.literal("\n"))
                 .append(Component.literal("\n§f/atproto logout"))
                 .append(Component.literal("\n  §7Log out and clear your local session"))

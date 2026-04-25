@@ -297,7 +297,7 @@ class ClientAtProtoClient(
         body: String? = null
     ): Result<String> = runCatching {
         val url = "$pdsUrl/xrpc/$endpoint"
-        
+
         val requestBuilder = HttpRequest.newBuilder()
             .uri(URI.create(url))
             .header("Authorization", "Bearer $accessJwt")
@@ -317,13 +317,75 @@ class ClientAtProtoClient(
         }
 
         val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
-        
+
         if (response.statusCode() !in 200..299) {
             throw Exception("Request failed with status ${response.statusCode()}")
         }
 
         response.body()
     }
+
+    /**
+     * Makes an authenticated XRPC request with DPoP proof.
+     * Used for OAuth sessions where DPoP is mandatory.
+     *
+     * The Authorization header uses the DPoP scheme instead of Bearer,
+     * and a DPoP proof JWT is included in the DPoP header.
+     */
+    suspend fun xrpcRequestWithDpop(
+        method: String,
+        endpoint: String,
+        accessJwt: String,
+        pdsUrl: String,
+        body: String? = null,
+        dpopProof: String,
+    ): Result<String> = runCatching {
+        val url = "$pdsUrl/xrpc/$endpoint"
+
+        val requestBuilder = HttpRequest.newBuilder()
+            .uri(URI.create(url))
+            .header("Authorization", "DPoP $accessJwt")
+            .header("DPoP", dpopProof)
+            .header("Content-Type", "application/json")
+            .timeout(Duration.ofSeconds(15))
+
+        val request = when (method.uppercase()) {
+            "GET" -> requestBuilder.GET().build()
+            "POST" -> requestBuilder.POST(
+                HttpRequest.BodyPublishers.ofString(body ?: "{}")
+            ).build()
+            "PUT" -> requestBuilder.PUT(
+                HttpRequest.BodyPublishers.ofString(body ?: "{}")
+            ).build()
+            "DELETE" -> requestBuilder.DELETE().build()
+            else -> throw IllegalArgumentException("Unsupported HTTP method")
+        }
+
+        val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
+
+        // Handle DPoP nonce error
+        if (response.statusCode() == 401) {
+            val dpopNonce = response.headers().firstValue("DPoP-Nonce").orElse(null)
+            if (dpopNonce != null) {
+                throw DpopNonceRequiredException(dpopNonce, url)
+            }
+        }
+
+        if (response.statusCode() !in 200..299) {
+            throw Exception("Request failed with status ${response.statusCode()}")
+        }
+
+        response.body()
+    }
+
+    /**
+     * Exception indicating that a DPoP nonce is required.
+     * The caller should retry with the provided nonce.
+     */
+    class DpopNonceRequiredException(
+        val nonce: String,
+        val url: String,
+    ) : Exception("DPoP nonce required from server")
 
     private fun encodeURIComponent(value: String): String {
         return URI(null, null, null, -1, null, null, null)

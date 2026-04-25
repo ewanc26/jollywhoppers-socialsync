@@ -3,6 +3,7 @@ package com.jollywhoppers
 import com.jollywhoppers.atproto.client.ClientAtProtoClient
 import com.jollywhoppers.atproto.client.ClientAtProtoCommands
 import com.jollywhoppers.atproto.client.ClientSessionManager
+import com.jollywhoppers.atproto.oauth.OAuthManager
 import com.jollywhoppers.network.AtProtoPackets
 import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback
@@ -18,10 +19,13 @@ object AtprotoconnectClient : ClientModInitializer {
 	// Client-side AT Protocol components
 	lateinit var atProtoClient: ClientAtProtoClient
 		private set
-	
+
 	lateinit var sessionManager: ClientSessionManager
 		private set
-	
+
+	lateinit var oAuthManager: OAuthManager
+		private set
+
 	lateinit var commands: ClientAtProtoCommands
 		private set
 
@@ -38,9 +42,13 @@ object AtprotoconnectClient : ClientModInitializer {
 			// Initialize client-side session manager
 			sessionManager = ClientSessionManager(atProtoClient)
 			logger.info("Client-side session manager initialized")
-			
+
+			// Initialize OAuth manager
+			oAuthManager = OAuthManager()
+			logger.info("OAuth manager initialized")
+
 			// Initialize client-side commands
-			commands = ClientAtProtoCommands(sessionManager)
+			commands = ClientAtProtoCommands(sessionManager, oAuthManager)
 			
 			// Register client-side commands
 			ClientCommandRegistrationCallback.EVENT.register { dispatcher, _ ->
@@ -57,6 +65,8 @@ object AtprotoconnectClient : ClientModInitializer {
 			logger.info("  [OK] Client-side authentication")
 			logger.info("  [OK] Passwords never sent to server")
 			logger.info("  [OK] Local session storage")
+			logger.info("  [OK] OAuth browser-based login")
+			logger.info("  [OK] DPoP proof of possession")
 			logger.info("Use /atproto help to see available commands")
 			logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 		} catch (e: Exception) {
