@@ -325,7 +325,7 @@ All configuration files are stored in `config/atproto-connect/`:
 * [ ] Add automatic stat syncing at configurable intervals
 * [ ] Add privacy controls and data filtering options
 * [ ] Create example AppView for displaying Minecraft data
-* [ ] Implement OAuth device flow for better UX
+* [ ] Implement OAuth browser flow for better UX
 * [ ] Add DPoP support
 * [ ] Write comprehensive documentation
 * [ ] Add automated tests
