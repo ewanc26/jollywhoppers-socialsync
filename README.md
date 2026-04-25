@@ -140,6 +140,12 @@ git clone git@tangled.sh:jollywhoppers.com/socialsync
 cd socialsync
 ```
 
+If you use Nix, start a development shell first:
+
+```bash
+nix develop
+```
+
 Build the project:
 
 ```bash
