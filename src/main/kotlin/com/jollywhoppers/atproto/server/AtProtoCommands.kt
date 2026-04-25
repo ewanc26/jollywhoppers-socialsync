@@ -324,6 +324,8 @@ class AtProtoCommands(
             val linkedAgo = formatTimeSince(identity.linkedAt)
             val verifiedAgo = formatTimeSince(identity.lastVerified)
             val isAuthenticated = sessionManager.hasSession(player.uuid)
+            val session = sessionManager.getAllSessions()[player.uuid]
+            val authType = session?.authType ?: "none"
 
             context.source.sendSuccess(
                 {
@@ -335,7 +337,11 @@ class AtProtoCommands(
                         .append(Component.literal("\n"))
                         .append(
                             if (isAuthenticated) {
-                                Component.literal("\n§aAuthentication: §f✓ Active")
+                                val typeLabel = when (authType) {
+                                    "oauth" -> "§bOAuth"
+                                    else -> "§eApp Password"
+                                }
+                                Component.literal("\n§aAuthentication: §f✓ Active ($typeLabel§f)")
                                     .append(Component.literal("\n§7You can sync data to AT Protocol"))
                             } else {
                                 Component.literal("\n§cAuthentication: §f✗ Not logged in")
@@ -467,8 +473,11 @@ class AtProtoCommands(
                     .append(Component.literal("\n  §7Look up another player's AT Protocol identity"))
                     .append(Component.literal("\n"))
                     .append(Component.literal("\n§e━━━ Client-Side Login (Type in Client) ━━━"))
-                    .append(Component.literal("\n§eFor authentication, use the client-side command:"))
+                    .append(Component.literal("\n§eFor authentication, use the client-side commands:"))
+                    .append(Component.literal("\n§f/atproto login <handle>"))
+                    .append(Component.literal("\n  §7OAuth browser login (Recommended!)"))
                     .append(Component.literal("\n§f/atproto login <handle> <app-password>"))
+                    .append(Component.literal("\n  §7App password login (fallback)"))
                     .append(Component.literal("\n§7Authentication happens on your computer"))
                     .append(Component.literal("\n§7Your password never goes to the server!"))
             },

@@ -32,14 +32,15 @@ object AtProtoPackets {
         val handle: String,
         val pdsUrl: String,
         val accessJwt: String,
-        val refreshJwt: String
+        val refreshJwt: String,
+        val authType: String = "app_password",
     ) : CustomPacketPayload {
         override fun type(): CustomPacketPayload.Type<out CustomPacketPayload> = TYPE
-        
+
         companion object {
-            val TYPE: CustomPacketPayload.Type<AuthenticatePacket> = 
+            val TYPE: CustomPacketPayload.Type<AuthenticatePacket> =
                 CustomPacketPayload.Type(AUTHENTICATE_C2S_ID)
-            
+
             val CODEC: StreamCodec<FriendlyByteBuf, AuthenticatePacket> = StreamCodec.of(
                 { buf, packet ->
                     buf.writeUtf(packet.did)
@@ -47,6 +48,7 @@ object AtProtoPackets {
                     buf.writeUtf(packet.pdsUrl)
                     buf.writeUtf(packet.accessJwt)
                     buf.writeUtf(packet.refreshJwt)
+                    buf.writeUtf(packet.authType)
                 },
                 { buf ->
                     AuthenticatePacket(
@@ -54,7 +56,8 @@ object AtProtoPackets {
                         handle = buf.readUtf(),
                         pdsUrl = buf.readUtf(),
                         accessJwt = buf.readUtf(),
-                        refreshJwt = buf.readUtf()
+                        refreshJwt = buf.readUtf(),
+                        authType = buf.readUtf(),
                     )
                 }
             )
