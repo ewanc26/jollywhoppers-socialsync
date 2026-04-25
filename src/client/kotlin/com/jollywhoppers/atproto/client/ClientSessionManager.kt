@@ -31,6 +31,8 @@ class ClientSessionManager(
 ) {
     private val logger = LoggerFactory.getLogger("atproto-connect-client")
     private val storageFile: Path
+    private val keyFile: Path
+    private var encryptionKey: javax.crypto.SecretKey
     private var currentSession: PlayerSession? = null
     private var currentOAuthSession: OAuthSession? = null
     private var dpopKeyPair: KeyPair? = null
@@ -54,8 +56,9 @@ class ClientSessionManager(
 
     @Serializable
     private data class SessionStorage(
-        val version: Int = 2,
+        val version: Int = 3,
         val session: PlayerSession? = null,
+        val encrypted: Boolean = false,
     )
 
     init {
@@ -63,6 +66,10 @@ class ClientSessionManager(
         val configDir = FabricLoader.getInstance().configDir.resolve("atproto-connect")
         Files.createDirectories(configDir)
         storageFile = configDir.resolve("client-session.json")
+        keyFile = configDir.resolve(".session-key")
+
+        // Load or generate encryption key
+        encryptionKey = ClientSecurityUtils.loadOrGenerateKey(keyFile)
 
         // Load existing session
         load()
@@ -248,14 +255,31 @@ class ClientSessionManager(
 
     /**
      * Loads session from disk.
+     * Supports both encrypted (v3) and plaintext (v1/v2) session files
+     * for backward compatibility.
      */
     private fun load() {
         try {
             if (Files.exists(storageFile)) {
                 val content = Files.readString(storageFile)
-                val storage = json.decodeFromString<SessionStorage>(content)
+
+                // Try to parse as encrypted first
+                val storage = try {
+                    val decrypted = ClientSecurityUtils.decrypt(content, encryptionKey)
+                    json.decodeFromString<SessionStorage>(decrypted)
+                } catch (_: Exception) {
+                    // Not encrypted (legacy format) — parse directly
+                    json.decodeFromString<SessionStorage>(content)
+                }
+
                 currentSession = storage.session
                 logger.info("Loaded session from disk: ${currentSession?.handle ?: "none"} (auth: ${currentSession?.authType ?: "none"})")
+
+                // If the session was loaded from a plaintext file, re-save it encrypted
+                if (!storage.encrypted && currentSession != null) {
+                    logger.info("Migrating plaintext session to encrypted storage")
+                    save()
+                }
             } else {
                 logger.info("No existing session found")
             }
@@ -265,28 +289,38 @@ class ClientSessionManager(
     }
 
     /**
-     * Saves session to disk.
-     * TODO: Add encryption for added security (server-side already has it).
+     * Saves session to disk with AES-256-GCM encryption.
+     * The session file is encrypted using the client's local key.
      */
     private fun save() {
         try {
             Files.createDirectories(storageFile.parent)
 
             val storage = SessionStorage(
-                version = 2,
+                version = 3,
                 session = currentSession,
+                encrypted = true,
             )
 
-            val content = json.encodeToString(storage)
+            val plaintext = json.encodeToString(storage)
+            val encrypted = ClientSecurityUtils.encrypt(plaintext, encryptionKey)
 
             Files.writeString(
                 storageFile,
-                content,
+                encrypted,
                 StandardOpenOption.CREATE,
                 StandardOpenOption.TRUNCATE_EXISTING
             )
 
-            logger.debug("Saved session to disk")
+            // Set restricted file permissions
+            try {
+                storageFile.toFile().setReadable(true, true)
+                storageFile.toFile().setWritable(true, true)
+            } catch (_: Exception) {
+                // Not critical — best effort
+            }
+
+            logger.debug("Saved encrypted session to disk")
         } catch (e: Exception) {
             logger.error("Failed to save session", e)
         }
