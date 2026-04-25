@@ -44,7 +44,7 @@ object AtprotoconnectClient : ClientModInitializer {
 			logger.info("Client-side session manager initialized")
 
 			// Initialize OAuth manager
-			oAuthManager = OAuthManager()
+			oAuthManager = OAuthManager(atProtoClient)
 			logger.info("OAuth manager initialized")
 
 			// Initialize client-side commands

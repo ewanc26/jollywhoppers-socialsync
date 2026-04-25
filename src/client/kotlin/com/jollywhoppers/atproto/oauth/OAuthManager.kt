@@ -26,7 +26,9 @@ import java.util.UUID
  * 10. Verify the returned DID matches the expected identity
  * 11. Store the OAuth session
  */
-class OAuthManager {
+class OAuthManager(
+    private val identityClient: com.jollywhoppers.atproto.client.ClientAtProtoClient
+) {
     private val logger = LoggerFactory.getLogger("atproto-connect:oauth")
     private val json = Json {
         ignoreUnknownKeys = true
@@ -305,12 +307,34 @@ class OAuthManager {
 
     /**
      * Resolves a handle or DID to (did, handle, pdsUrl).
+     * Delegates to the existing ClientAtProtoClient identity resolution.
      */
-    private fun resolveIdentity(identifier: String): Triple<String, String, String> {
-        // For now, delegate to the existing client-side identity resolution.
-        // This will be replaced with a direct implementation that doesn't depend
-        // on the existing ClientAtProtoClient.
-        throw NotImplementedError("Identity resolution will be wired up in the integration step")
+    private suspend fun resolveIdentity(identifier: String): Triple<String, String, String> {
+        val did: String
+        val handle: String
+        val pdsUrl: String
+
+        if (identifier.startsWith("did:")) {
+            // Already a DID — resolve it to find the PDS
+            did = identifier
+            pdsUrl = identityClient.resolveDID(did).getOrElse {
+                throw IllegalStateException("Could not resolve DID $did: ${it.message}")
+            }
+            // Try to derive handle from DID (reverse resolution not available,
+            // so we use the identifier as-is and let the auth server confirm)
+            handle = identifier
+        } else {
+            // It's a handle — resolve to DID, then to PDS
+            did = identityClient.resolveHandle(identifier).getOrElse {
+                throw IllegalStateException("Could not resolve handle $identifier: ${it.message}")
+            }
+            handle = identifier
+            pdsUrl = identityClient.resolveDID(did).getOrElse {
+                throw IllegalStateException("Could not resolve PDS for DID $did: ${it.message}")
+            }
+        }
+
+        return Triple(did, handle, pdsUrl)
     }
 
     // ============================================================================
