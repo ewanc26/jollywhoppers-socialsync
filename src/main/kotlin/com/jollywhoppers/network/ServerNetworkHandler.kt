@@ -91,7 +91,8 @@ object ServerNetworkHandler {
                 handle = packet.handle,
                 pdsUrl = packet.pdsUrl,
                 accessJwt = packet.accessJwt,
-                refreshJwt = packet.refreshJwt
+                refreshJwt = packet.refreshJwt,
+                authType = packet.authType,
             )
 
             // Link identity if not already linked

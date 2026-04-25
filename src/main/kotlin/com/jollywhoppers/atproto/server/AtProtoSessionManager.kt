@@ -50,7 +50,8 @@ class AtProtoSessionManager(
         val accessJwt: String,
         val refreshJwt: String,
         val createdAt: Long = System.currentTimeMillis(),
-        val lastRefreshed: Long = System.currentTimeMillis()
+        val lastRefreshed: Long = System.currentTimeMillis(),
+        val authType: String = "app_password",
     )
 
     @Serializable
@@ -115,6 +116,7 @@ class AtProtoSessionManager(
     /**
      * Stores a verified session that was authenticated client-side.
      * This is the preferred method for storing sessions.
+     * @param authType "oauth" or "app_password" (default: "app_password")
      */
     fun storeVerifiedSession(
         uuid: UUID,
@@ -122,10 +124,11 @@ class AtProtoSessionManager(
         handle: String,
         pdsUrl: String,
         accessJwt: String,
-        refreshJwt: String
+        refreshJwt: String,
+        authType: String = "app_password",
     ) {
-        logger.info("Storing verified session for player $uuid (${handle})")
-        
+        logger.info("Storing verified session for player $uuid (${handle}) via $authType")
+
         val session = PlayerSession(
             uuid = uuid.toString(),
             did = did,
@@ -134,7 +137,8 @@ class AtProtoSessionManager(
             accessJwt = accessJwt,
             refreshJwt = refreshJwt,
             createdAt = System.currentTimeMillis(),
-            lastRefreshed = System.currentTimeMillis()
+            lastRefreshed = System.currentTimeMillis(),
+            authType = authType,
         )
         
         sessions[uuid] = session
