@@ -4,10 +4,13 @@ import com.jollywhoppers.atproto.server.AtProtoClient
 import com.jollywhoppers.atproto.server.AtProtoCommands
 import com.jollywhoppers.atproto.server.AtProtoSessionManager
 import com.jollywhoppers.atproto.server.PlayerIdentityStore
+import com.jollywhoppers.atproto.server.PlayerStatSyncService
+import com.jollywhoppers.atproto.server.RecordManager
 import com.jollywhoppers.security.SecurityAuditor
 import net.fabricmc.api.ModInitializer
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents
 import net.fabricmc.loader.api.FabricLoader
 import org.slf4j.LoggerFactory
 import java.util.concurrent.Executors
@@ -25,6 +28,12 @@ object Atprotoconnect : ModInitializer {
         private set
     
     lateinit var sessionManager: AtProtoSessionManager
+        private set
+
+    lateinit var recordManager: RecordManager
+        private set
+
+    lateinit var statSyncService: PlayerStatSyncService
         private set
     
     lateinit var commands: AtProtoCommands
@@ -63,6 +72,20 @@ object Atprotoconnect : ModInitializer {
             sessionManager = AtProtoSessionManager(sessionStorePath, atProtoClient)
             logger.info("Session manager initialized with encryption at: $sessionStorePath")
 
+            // Initialize record manager
+            recordManager = RecordManager(sessionManager)
+            logger.info("Record manager initialized")
+
+            // Initialize automatic Minecraft stat syncing
+            val statSyncStatePath = configDir.resolve("minecraft-stat-sync-state.json")
+            statSyncService = PlayerStatSyncService(
+                recordManager = recordManager,
+                sessionManager = sessionManager,
+                identityStore = identityStore,
+                storageFile = statSyncStatePath
+            )
+            logger.info("Minecraft stat sync service initialized at: $statSyncStatePath")
+
             // Initialize command handler (with rate limiting and audit logging)
             commands = AtProtoCommands(atProtoClient, identityStore, sessionManager)
 
@@ -74,6 +97,12 @@ object Atprotoconnect : ModInitializer {
             
             // Register network packet handlers
             com.jollywhoppers.network.ServerNetworkHandler.register()
+
+            // Register periodic Minecraft stat sync checks
+            ServerTickEvents.END_SERVER_TICK.register { server ->
+                statSyncService.onServerTick(server)
+            }
+            logger.info("Minecraft stat sync tick handler registered")
             
             // Schedule periodic cleanup tasks
             setupCleanupTasks()
@@ -91,6 +120,7 @@ object Atprotoconnect : ModInitializer {
             logger.info("  ✓ Rate limiting (3 attempts / 15 min)")
             logger.info("  ✓ Security audit logging")
             logger.info("  ✓ Enhanced SSRF protection")
+            logger.info("  ✓ Automatic Minecraft stat syncing")
             logger.info("Players can use /atproto help to see available commands")
             logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         } catch (e: Exception) {
@@ -123,6 +153,10 @@ object Atprotoconnect : ModInitializer {
         logger.info("Server stopping, shutting down atproto-connect components")
         
         try {
+            if (::statSyncService.isInitialized) {
+                statSyncService.shutdown()
+            }
+
             // Shutdown scheduler
             scheduler.shutdown()
             if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
