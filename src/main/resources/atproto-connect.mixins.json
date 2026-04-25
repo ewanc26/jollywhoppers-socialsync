@@ -3,7 +3,8 @@
 	"package": "com.jollywhoppers.mixin",
 	"compatibilityLevel": "JAVA_21",
 	"mixins": [
-		"ExampleMixin"
+		"ExampleMixin",
+		"PlayerAdvancementsMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1
