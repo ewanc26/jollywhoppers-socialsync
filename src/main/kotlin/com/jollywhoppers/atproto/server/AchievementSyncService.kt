@@ -37,6 +37,7 @@ class AchievementSyncService(
     private val recordManager: RecordManager,
     private val sessionManager: AtProtoSessionManager,
     private val identityStore: PlayerIdentityStore,
+    private val syncPreferencesStore: PlayerSyncPreferencesStore,
 ) {
     private val logger = LoggerFactory.getLogger("atproto-connect:achievements")
     private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -67,9 +68,8 @@ class AchievementSyncService(
         }
 
         // Check sync consent
-        val syncConsent = identityStore.getSyncConsent(uuid)
-        if (syncConsent != null && !syncConsent.first) {
-            logger.debug("Skipping achievement sync for ${player.name.string}: syncStats consent is disabled")
+        if (!syncPreferencesStore.getOrDefault(uuid).shouldSync("achievements")) {
+            logger.debug("Skipping achievement sync for ${player.name.string}: achievements sync consent is disabled")
             return
         }
 

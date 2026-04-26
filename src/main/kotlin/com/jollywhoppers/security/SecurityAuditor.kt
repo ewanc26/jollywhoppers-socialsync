@@ -58,14 +58,6 @@ object SecurityAuditor {
         log("SUSPICIOUS", uuid, message, ip)
     }
 
-    fun logSyncConsentChange(uuid: UUID, playerName: String, syncStats: Boolean? = null, syncSessions: Boolean? = null) {
-        val changes = buildString {
-            if (syncStats != null) append(" syncStats=$syncStats")
-            if (syncSessions != null) append(" syncSessions=$syncSessions")
-        }
-        log("SYNC_CONSENT_CHANGE", uuid, "Player $playerName changed sync consent:$changes", null)
-    }
-
     fun logSyncPreferenceChange(
         playerId: UUID,
         playerName: String,

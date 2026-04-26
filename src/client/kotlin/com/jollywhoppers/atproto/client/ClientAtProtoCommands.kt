@@ -2,6 +2,7 @@ package com.jollywhoppers.atproto.client
 
 import com.jollywhoppers.Atprotoconnect
 import com.jollywhoppers.atproto.oauth.OAuthManager
+import com.jollywhoppers.config.PreferencesManager
 import com.jollywhoppers.network.AtProtoPackets
 import com.jollywhoppers.screen.AtProtoConfigScreen
 import com.mojang.brigadier.CommandDispatcher
@@ -72,6 +73,10 @@ class ClientAtProtoCommands(
                                     builder.suggest("stats off")
                                     builder.suggest("sessions on")
                                     builder.suggest("sessions off")
+                                    builder.suggest("achievements on")
+                                    builder.suggest("achievements off")
+                                    builder.suggest("server-status on")
+                                    builder.suggest("server-status off")
                                     builder.buildFuture()
                                 }
                                 .executes { context -> setSyncConsent(context) }
@@ -271,12 +276,13 @@ class ClientAtProtoCommands(
 
     /**
      * Shows current sync consent settings.
-     * Note: Sync consent settings are stored server-side, so this shows the
-     * current session's auth type and reminds the user to use server commands.
+     * Reads from local client preferences and sends the current state
+     * to the server via SyncPreferencesPacket.
      */
     private fun syncConsentStatus(context: CommandContext<FabricClientCommandSource>): Int {
         val hasSession = sessionManager.hasSession()
         val isOAuth = sessionManager.isOAuthSession()
+        val prefs = PreferencesManager.get()
 
         context.source.sendFeedback(
             Component.literal("§b━━━ Sync Consent ━━━")
@@ -285,22 +291,27 @@ class ClientAtProtoCommands(
                 .append(
                     if (hasSession) {
                         Component.literal("\n§7Auth type: §f${if (isOAuth) "OAuth" else "App Password"}")
-                            .append(Component.literal("\n§7OAuth sessions use scoped permissions"))
                     } else {
                         Component.literal("\n§cNot logged in")
                     }
                 )
                 .append(Component.literal("\n"))
-                .append(Component.literal("\n§eSync consent is managed on the server side:"))
-                .append(Component.literal("\n§f/atproto sync"))
-                .append(Component.literal("\n§f/atproto sync stats <on|off>"))
-                .append(Component.literal("\n§f/atproto sync sessions <on|off>"))
+                .append(Component.literal("\n§7Stats syncing: ${if (prefs.syncStatsEnabled) "§aOn" else "§cOff"}"))
+                .append(Component.literal("\n§7Session syncing: ${if (prefs.syncSessionsEnabled) "§aOn" else "§cOff"}"))
+                .append(Component.literal("\n§7Achievement syncing: ${if (prefs.syncAchievementsEnabled) "§aOn" else "§cOff"}"))
+                .append(Component.literal("\n§7Server status syncing: ${if (prefs.syncServerStatusEnabled) "§aOn" else "§cOff"}"))
+                .append(Component.literal("\n"))
+                .append(Component.literal("\n§7Use §f/atproto sync stats <on|off>"))
+                .append(Component.literal("\n§7Use §f/atproto sync sessions <on|off>"))
+                .append(Component.literal("\n§7Use §f/atproto sync achievements <on|off>"))
+                .append(Component.literal("\n§7Use §f/atproto sync server-status <on|off>"))
         )
         return 1
     }
 
     /**
-     * Sets a sync consent setting (client-side convenience that directs to server).
+     * Sets a sync consent setting.
+     * Updates local preferences and sends the change to the server via SyncPreferencesPacket.
      */
     private fun setSyncConsent(context: CommandContext<FabricClientCommandSource>): Int {
         val setting = StringArgumentType.getString(context, "setting").lowercase()
@@ -309,7 +320,8 @@ class ClientAtProtoCommands(
         val parts = setting.split(" ", limit = 2)
         if (parts.size != 2) {
             context.source.sendError(
-                Component.literal("§cInvalid format. Use: stats <on|off> or sessions <on|off>")
+                Component.literal("§cInvalid format. Use: <category> <on|off>")
+                    .append(Component.literal("\n§7Categories: stats, sessions, achievements, server-status"))
             )
             return 0
         }
@@ -317,9 +329,10 @@ class ClientAtProtoCommands(
         val category = parts[0]
         val enabled = parts[1]
 
-        if (category !in listOf("stats", "sessions")) {
+        if (category !in listOf("stats", "sessions", "achievements", "server-status")) {
             context.source.sendError(
-                Component.literal("§cUnknown category: $category. Use: stats or sessions")
+                Component.literal("§cUnknown category: $category")
+                    .append(Component.literal("\n§7Use: stats, sessions, achievements, or server-status"))
             )
             return 0
         }
@@ -331,11 +344,33 @@ class ClientAtProtoCommands(
             return 0
         }
 
-        // Sync consent is server-side, so we inform the user
+        val value = enabled == "on"
+
+        // Update local preferences
+        when (category) {
+            "stats" -> PreferencesManager.updateSyncConsent(stats = value)
+            "sessions" -> PreferencesManager.updateSyncConsent(sessions = value)
+            "achievements" -> PreferencesManager.updateSyncConsent(achievements = value)
+            "server-status" -> PreferencesManager.updateSyncConsent(serverStatus = value)
+        }
+
+        // Send to server
+        val prefs = PreferencesManager.get()
+        val packet = AtProtoPackets.SyncPreferencesPacket(
+            syncStatsEnabled = prefs.syncStatsEnabled,
+            syncSessionsEnabled = prefs.syncSessionsEnabled,
+            syncAchievementsEnabled = prefs.syncAchievementsEnabled,
+            syncServerStatusEnabled = prefs.syncServerStatusEnabled,
+            statsSyncFrequency = prefs.statsSyncFrequency,
+            sessionSyncFrequency = prefs.sessionSyncFrequency,
+            achievementSyncFrequency = prefs.achievementSyncFrequency,
+        )
+        ClientPlayNetworking.send(packet)
+
+        val label = category.replace("-", " ")
         context.source.sendFeedback(
-            Component.literal("§eSync consent is managed on the server side.")
-                .append(Component.literal("\n§7Run this command on the server instead:"))
-                .append(Component.literal("\n§f/atproto sync $category $enabled"))
+            Component.literal("§a✓ ${label.replaceFirstChar { it.uppercase() }} syncing: ${if (value) "§aOn" else "§cOff"}")
+                .append(Component.literal("\n§7Preference saved and sent to server"))
         )
         return 1
     }

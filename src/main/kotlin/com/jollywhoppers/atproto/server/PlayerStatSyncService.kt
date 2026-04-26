@@ -26,6 +26,7 @@ class PlayerStatSyncService(
     private val recordManager: RecordManager,
     private val sessionManager: AtProtoSessionManager,
     private val identityStore: PlayerIdentityStore,
+    private val syncPreferencesStore: PlayerSyncPreferencesStore,
     storageFile: Path,
     private val syncIntervalTicks: Long = 20L * 60L * 5L
 ) {
@@ -116,9 +117,8 @@ class PlayerStatSyncService(
         }
 
         // Check sync consent before syncing stats
-        val syncConsent = identityStore.getSyncConsent(player.uuid)
-        if (syncConsent != null && !syncConsent.first) {
-            logger.debug("Skipping stat sync for ${player.name.string}: syncStats consent is disabled")
+        if (!syncPreferencesStore.getOrDefault(player.uuid).shouldSync("stats")) {
+            logger.debug("Skipping stat sync for ${player.name.string}: stats sync consent is disabled")
             return null
         }
 

@@ -31,6 +31,7 @@ class AtProtoCommands(
     private val client: AtProtoClient,
     private val identityStore: PlayerIdentityStore,
     private val sessionManager: AtProtoSessionManager,
+    private val syncPreferencesStore: PlayerSyncPreferencesStore,
     private val profileService: PlayerProfileService? = null,
 ) {
     private val logger = LoggerFactory.getLogger("atproto-connect")
@@ -102,6 +103,28 @@ class AtProtoCommands(
                                 .then(
                                     Commands.literal("off")
                                         .executes { context -> setSyncConsent(context, syncSessions = false) }
+                                )
+                        )
+                        .then(
+                            Commands.literal("achievements")
+                                .then(
+                                    Commands.literal("on")
+                                        .executes { context -> setSyncConsent(context, syncAchievements = true) }
+                                )
+                                .then(
+                                    Commands.literal("off")
+                                        .executes { context -> setSyncConsent(context, syncAchievements = false) }
+                                )
+                        )
+                        .then(
+                            Commands.literal("server-status")
+                                .then(
+                                    Commands.literal("on")
+                                        .executes { context -> setSyncConsent(context, syncServerStatus = true) }
+                                )
+                                .then(
+                                    Commands.literal("off")
+                                        .executes { context -> setSyncConsent(context, syncServerStatus = false) }
                                 )
                         )
                 )
@@ -489,13 +512,7 @@ class AtProtoCommands(
             return 0
         }
 
-        val syncConsent = identityStore.getSyncConsent(player.uuid)
-        if (syncConsent == null) {
-            context.source.sendFailure(Component.literal("§cCould not read sync consent settings"))
-            return 0
-        }
-
-        val (syncStats, syncSessions) = syncConsent
+        val prefs = syncPreferencesStore.getOrDefault(player.uuid)
 
         context.source.sendSuccess(
             {
@@ -503,11 +520,15 @@ class AtProtoCommands(
                     .append(Component.literal("\n§7Note: AT Protocol data is §falways public§7."))
                     .append(Component.literal("\n§7These controls decide whether data is written at all."))
                     .append(Component.literal("\n"))
-                    .append(Component.literal("\n§7Stats syncing: ${if (syncStats) "§aOn" else "§cOff"}"))
-                    .append(Component.literal("\n§7Session syncing: ${if (syncSessions) "§aOn" else "§cOff"}"))
+                    .append(Component.literal("\n§7Stats syncing: ${if (prefs.syncStatsEnabled) "§aOn" else "§cOff"}"))
+                    .append(Component.literal("\n§7Session syncing: ${if (prefs.syncSessionsEnabled) "§aOn" else "§cOff"}"))
+                    .append(Component.literal("\n§7Achievement syncing: ${if (prefs.syncAchievementsEnabled) "§aOn" else "§cOff"}"))
+                    .append(Component.literal("\n§7Server status syncing: ${if (prefs.syncServerStatusEnabled) "§aOn" else "§cOff"}"))
                     .append(Component.literal("\n"))
                     .append(Component.literal("\n§7Use §f/atproto sync stats <on|off>"))
                     .append(Component.literal("\n§7Use §f/atproto sync sessions <on|off>"))
+                    .append(Component.literal("\n§7Use §f/atproto sync achievements <on|off>"))
+                    .append(Component.literal("\n§7Use §f/atproto sync server-status <on|off>"))
             },
             false
         )
@@ -521,6 +542,8 @@ class AtProtoCommands(
         context: CommandContext<CommandSourceStack>,
         syncStats: Boolean? = null,
         syncSessions: Boolean? = null,
+        syncAchievements: Boolean? = null,
+        syncServerStatus: Boolean? = null,
     ): Int {
         val player = context.source.playerOrException
 
@@ -531,18 +554,28 @@ class AtProtoCommands(
             return 0
         }
 
-        val updated = identityStore.updateSyncConsent(player.uuid, syncStats, syncSessions)
-        if (updated == null) {
-            context.source.sendFailure(Component.literal("§cFailed to update sync consent settings"))
-            return 0
-        }
+        syncPreferencesStore.update(
+            playerId = player.uuid,
+            stats = syncStats,
+            sessions = syncSessions,
+            achievements = syncAchievements,
+            serverStatus = syncServerStatus,
+        )
+
+        val updated = syncPreferencesStore.getOrDefault(player.uuid)
 
         val changes = buildString {
             if (syncStats != null) {
-                append("\n§7Stats syncing: ${if (updated.syncStats) "§aOn" else "§cOff"}")
+                append("\n§7Stats syncing: ${if (updated.syncStatsEnabled) "§aOn" else "§cOff"}")
             }
             if (syncSessions != null) {
-                append("\n§7Session syncing: ${if (updated.syncSessions) "§aOn" else "§cOff"}")
+                append("\n§7Session syncing: ${if (updated.syncSessionsEnabled) "§aOn" else "§cOff"}")
+            }
+            if (syncAchievements != null) {
+                append("\n§7Achievement syncing: ${if (updated.syncAchievementsEnabled) "§aOn" else "§cOff"}")
+            }
+            if (syncServerStatus != null) {
+                append("\n§7Server status syncing: ${if (updated.syncServerStatusEnabled) "§aOn" else "§cOff"}")
             }
         }
 
@@ -554,15 +587,14 @@ class AtProtoCommands(
             false
         )
 
-        SecurityAuditor.logSyncConsentChange(player.uuid, player.name.string, syncStats, syncSessions)
-
-        // Sync the player.profile record to reflect the change
-        profileService?.let { service ->
-            val server = context.source.server
-            val serverId = buildServerId(server)
-            val serverName = server.getMotd().ifBlank { "Minecraft Server" }
-            service.syncProfile(player.uuid, serverId, serverName)
-        }
+        SecurityAuditor.logSyncPreferenceChange(
+            playerId = player.uuid,
+            playerName = player.name.string,
+            stats = updated.syncStatsEnabled,
+            sessions = updated.syncSessionsEnabled,
+            achievements = updated.syncAchievementsEnabled,
+            serverStatus = updated.syncServerStatusEnabled,
+        )
 
         return 1
     }
@@ -596,6 +628,10 @@ class AtProtoCommands(
                     .append(Component.literal("\n  §7Control whether your stats are synced"))
                     .append(Component.literal("\n§f/atproto sync sessions <on|off>"))
                     .append(Component.literal("\n  §7Control whether your sessions are synced"))
+                    .append(Component.literal("\n§f/atproto sync achievements <on|off>"))
+                    .append(Component.literal("\n  §7Control whether your achievements are synced"))
+                    .append(Component.literal("\n§f/atproto sync server-status <on|off>"))
+                    .append(Component.literal("\n  §7Control whether server status is synced"))
                     .append(Component.literal("\n"))
                     .append(Component.literal("\n§7Note: AT Protocol data is §falways public§7."))
                     .append(Component.literal("\n§7Turning sync off prevents data from being written."))

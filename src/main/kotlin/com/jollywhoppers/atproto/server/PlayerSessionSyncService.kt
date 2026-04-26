@@ -36,6 +36,7 @@ class PlayerSessionSyncService(
     private val recordManager: RecordManager,
     private val sessionManager: AtProtoSessionManager,
     private val identityStore: PlayerIdentityStore,
+    private val syncPreferencesStore: PlayerSyncPreferencesStore,
 ) {
     private val logger = LoggerFactory.getLogger("atproto-connect:sessions")
     private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -102,9 +103,8 @@ class PlayerSessionSyncService(
         }
 
         // Check sync consent
-        val syncConsent = identityStore.getSyncConsent(uuid)
-        if (syncConsent != null && !syncConsent.second) {
-            logger.debug("Skipping session record for $uuid: syncSessions consent is disabled")
+        if (!syncPreferencesStore.getOrDefault(uuid).shouldSync("sessions")) {
+            logger.debug("Skipping session record for $uuid: sessions sync consent is disabled")
             return
         }
 
