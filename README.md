@@ -47,6 +47,8 @@ Players can link their Minecraft accounts to their AT Protocol identities and au
 * **`/atproto sync`** - View your sync consent settings
 * **`/atproto sync stats <on|off>`** - Control whether your stats are synced
 * **`/atproto sync sessions <on|off>`** - Control whether your sessions are synced
+* **`/atproto sync achievements <on|off>`** - Control whether your achievements are synced
+* **`/atproto sync server-status <on|off>`** - Control whether server status is synced
 
 **Example Workflow:**
 
@@ -112,7 +114,7 @@ The mod automatically syncs Minecraft data to AT Protocol:
 
 All data syncing respects **sync consent** — players control whether their data is written to AT Protocol. Note that AT Protocol data is **always public** by design, so the sync consent controls whether data is written at all, not who can see it.
 
-Use `/atproto sync` to view and change your sync consent settings.
+Use `/atproto sync` to view and change your sync consent settings. Consent can also be toggled from the mod config screen.
 
 ### Getting an App Password
 
@@ -124,10 +126,8 @@ Use `/atproto sync` to view and change your sync consent settings.
 
 ### Future Possibilities
 
-* Automatic stat syncing at configurable intervals
 * Achievement announcements via AT Protocol feeds
 * Cross-server player reputation systems
-* Privacy controls for what data gets synced
 * In-game social features tied to AT Protocol identities
 
 ## Technical Stack
@@ -197,6 +197,7 @@ src/main/
 │       ├── AtProtoSessionManager.kt         # Authentication & token management
 │       ├── AtProtoCommands.kt               # Command handlers
 │       ├── PlayerIdentityStore.kt           # UUID<->DID mapping storage
+│       ├── PlayerSyncPreferencesStore.kt    # Sync consent (single source of truth)
 │       ├── security/
 │       │   ├── RateLimiter.kt              # Rate limiting for auth attempts
 │       │   ├── SecurityAuditor.kt          # Security event logging
@@ -232,7 +233,7 @@ See `src/main/resources/lexicons/README.md` for detailed schema documentation.
 ## Architecture
 
 ```plaintext
-Player Commands (/atproto login, /atproto link, etc.)
+Player Commands (/atproto link, /atproto sync, etc.)
     ↓
 AtProtoCommands (Kotlin Coroutines)
     ↓
@@ -244,6 +245,13 @@ AtProtoCommands (Kotlin Coroutines)
 └────────────────────────────────────────┘
     ↓
 ┌────────────────────────────────────────┐
+│    PlayerSyncPreferencesStore          │
+│    • Sync consent (4 categories)       │
+│    • Sync frequency settings           │
+│    • Single source of truth            │
+└────────────────────────────────────────┘
+    ↓
+┌────────────────────────────────────────┐
 │         AtProtoClient                  │
 │    • HTTP + XRPC + Slingshot          │
 │    • Identity Resolution               │
@@ -251,7 +259,6 @@ AtProtoCommands (Kotlin Coroutines)
     ↓
 ┌────────────────────────────────────────┐
 │    Security Layer                      │
-│    • RateLimiter (3/15min)            │
 │    • SecurityAuditor (Event Logging)   │
 │    • SecurityUtils (Crypto & Validation)│
 └────────────────────────────────────────┘
@@ -268,6 +275,7 @@ AT Protocol Network
 Local Storage
     - player-identities.json (UUID↔DID mappings)
     - player-sessions.json (Encrypted auth tokens)
+    - sync-preferences/ (Per-player sync consent)
     - .encryption.key (AES-256 key)
     - security-audit.log (Security events)
 ```
@@ -331,6 +339,7 @@ All security-sensitive operations are logged to `config/atproto-connect/security
 All configuration files are stored in `config/atproto-connect/`:
 
 * **`player-identities.json`** - UUID to DID/handle mappings (plaintext as these are both publicly accessible anyway)
+* **`sync-preferences/`** - Per-player sync consent settings (stats, sessions, achievements, server status)
 * **`player-sessions.json`** - Encrypted authentication sessions
 * **`.encryption.key`** - AES-256 encryption key (auto-generated, keep secure!)
 * **`security-audit.log`** - Security event log
@@ -349,7 +358,7 @@ All configuration files are stored in `config/atproto-connect/`:
 * [x] Build data collection hooks for player statistics
 * [x] Implement authenticated record creation (writing stats)
 * [x] Add automatic stat syncing at configurable intervals
-* [x] Add sync consent controls (stats/sessions)
+* [x] Add sync consent controls (stats/sessions/achievements/server-status)
 * [x] Implement OAuth browser flow for better UX
 * [x] Add DPoP support
 * [x] Implement achievement syncing
