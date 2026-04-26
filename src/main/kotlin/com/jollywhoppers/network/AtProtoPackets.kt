@@ -21,6 +21,7 @@ object AtProtoPackets {
     val AUTHENTICATE_C2S_ID = ResourceLocation.fromNamespaceAndPath("atproto-connect", "authenticate")
     val AUTHENTICATE_RESPONSE_S2C_ID = ResourceLocation.fromNamespaceAndPath("atproto-connect", "authenticate_response")
     val LOGOUT_C2S_ID = ResourceLocation.fromNamespaceAndPath("atproto-connect", "logout")
+    val SYNC_PREFERENCES_C2S_ID = ResourceLocation.fromNamespaceAndPath("atproto-connect", "sync_preferences")
     
     /**
      * Client -> Server: Authenticated session data
@@ -114,6 +115,51 @@ object AtProtoPackets {
                 { buf ->
                     buf.readBoolean()
                     LogoutPacket()
+                }
+            )
+        }
+    }
+
+    /**
+     * Client -> Server: Sync preferences update
+     * Sent when player changes sync consent in ModMenu
+     */
+    @Serializable
+    data class SyncPreferencesPacket(
+        val syncStatsEnabled: Boolean,
+        val syncSessionsEnabled: Boolean,
+        val syncAchievementsEnabled: Boolean,
+        val syncServerStatusEnabled: Boolean,
+        val statsSyncFrequency: Int,
+        val sessionSyncFrequency: Int,
+        val achievementSyncFrequency: Int,
+    ) : CustomPacketPayload {
+        override fun type(): CustomPacketPayload.Type<out CustomPacketPayload> = TYPE
+
+        companion object {
+            val TYPE: CustomPacketPayload.Type<SyncPreferencesPacket> =
+                CustomPacketPayload.Type(SYNC_PREFERENCES_C2S_ID)
+
+            val CODEC: StreamCodec<FriendlyByteBuf, SyncPreferencesPacket> = StreamCodec.of(
+                { buf, packet ->
+                    buf.writeBoolean(packet.syncStatsEnabled)
+                    buf.writeBoolean(packet.syncSessionsEnabled)
+                    buf.writeBoolean(packet.syncAchievementsEnabled)
+                    buf.writeBoolean(packet.syncServerStatusEnabled)
+                    buf.writeInt(packet.statsSyncFrequency)
+                    buf.writeInt(packet.sessionSyncFrequency)
+                    buf.writeInt(packet.achievementSyncFrequency)
+                },
+                { buf ->
+                    SyncPreferencesPacket(
+                        syncStatsEnabled = buf.readBoolean(),
+                        syncSessionsEnabled = buf.readBoolean(),
+                        syncAchievementsEnabled = buf.readBoolean(),
+                        syncServerStatusEnabled = buf.readBoolean(),
+                        statsSyncFrequency = buf.readInt(),
+                        sessionSyncFrequency = buf.readInt(),
+                        achievementSyncFrequency = buf.readInt(),
+                    )
                 }
             )
         }
