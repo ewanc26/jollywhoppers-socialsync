@@ -1,8 +1,6 @@
 package com.jollywhoppers.atproto.server
 
-import com.jollywhoppers.security.RateLimiter
 import com.jollywhoppers.security.SecurityAuditor
-import com.jollywhoppers.security.SecurityUtils
 import com.mojang.brigadier.CommandDispatcher
 import com.mojang.brigadier.arguments.StringArgumentType
 import com.mojang.brigadier.context.CommandContext
@@ -12,10 +10,7 @@ import kotlinx.coroutines.launch
 import net.minecraft.commands.CommandSourceStack
 import net.minecraft.commands.Commands
 import net.minecraft.network.chat.Component
-import net.minecraft.server.level.ServerPlayer
 import org.slf4j.LoggerFactory
-import java.time.Duration
-import java.time.Instant
 
 /**
  * Handles AT Protocol-related commands for players.
@@ -36,13 +31,6 @@ class AtProtoCommands(
 ) {
     private val logger = LoggerFactory.getLogger("atproto-connect")
     private val coroutineScope = CoroutineScope(Dispatchers.IO)
-    
-    // Rate limiter: 3 attempts per 15 minutes, 30 minute lockout
-    private val rateLimiter = RateLimiter(
-        maxAttempts = 3,
-        windowSeconds = 900,  // 15 minutes
-        lockoutSeconds = 1800  // 30 minutes
-    )
 
     /**
      * Registers all AT Protocol commands.
@@ -168,7 +156,7 @@ class AtProtoCommands(
                                 append(Component.literal("\n§7Display Name: §f$it"))
                             }
                         }
-                        .append(Component.literal("\n\n§eNote: Use §f/atproto login§e to authenticate and sync data"))
+                        .append(Component.literal("\n\n§eNote: Use the mod config screen to authenticate and sync data"))
                 )
 
                 logger.info("Player ${player.name.string} (${player.uuid}) linked to ${profile.handle}")
@@ -220,117 +208,6 @@ class AtProtoCommands(
     }
 
     /**
-     * Authenticates a player with their AT Protocol credentials.
-     * @deprecated Login is now handled client-side
-     */
-    @Deprecated("Login is now handled client-side")
-    private fun loginDeprecated(context: CommandContext<CommandSourceStack>): Int {
-        val player = context.source.playerOrException
-        val identifier = StringArgumentType.getString(context, "identifier")
-        val password = StringArgumentType.getString(context, "password")
-
-        // Check rate limit BEFORE attempting authentication
-        val rateLimit = rateLimiter.checkAttempt(player.uuid)
-        if (!rateLimit.allowed) {
-            val lockUntil = rateLimit.lockedUntil
-            if (lockUntil != null) {
-                val minutesRemaining = Duration.between(
-                    Instant.now(),
-                    lockUntil
-                ).toMinutes()
-                
-                SecurityAuditor.logRateLimitLockout(player.uuid, player.name.string, minutesRemaining)
-                
-                context.source.sendFailure(
-                    Component.literal("§c✗ Too many failed authentication attempts")
-                        .append(Component.literal("\n§7Your account has been temporarily locked for security"))
-                        .append(Component.literal("\n§7Please try again in §f$minutesRemaining minutes"))
-                        .append(Component.literal("\n\n§7If you're having trouble, check your app password"))
-                )
-                logger.warn("Player ${player.name.string} (${player.uuid}) blocked by rate limiter")
-                return 0
-            }
-        }
-
-        val attemptsRemaining = rateLimit.attemptsRemaining
-        context.source.sendSuccess(
-            { 
-                Component.literal("§eAuthenticating with AT Protocol...")
-                    .append(Component.literal(" §7(${attemptsRemaining} attempts remaining)"))
-            },
-            false
-        )
-
-        coroutineScope.launch {
-            try {
-                // Create session (password is not logged)
-                val session = sessionManager.createSession(player.uuid, identifier, password).getOrThrow()
-
-                // Link identity if not already linked
-                if (!identityStore.isLinked(player.uuid)) {
-                    identityStore.linkIdentity(player.uuid, session.did, session.handle)
-                }
-
-                // Record successful authentication (clears rate limit)
-                rateLimiter.recordSuccess(player.uuid)
-                
-                // Audit log
-                SecurityAuditor.logAuthSuccess(player.uuid, session.handle, player.name.string)
-
-                player.sendSystemMessage(
-                    Component.literal("§a✓ Successfully authenticated!")
-                        .append(Component.literal("\n§7Handle: §f${session.handle}"))
-                        .append(Component.literal("\n§7DID: §f${session.did}"))
-                        .append(Component.literal("\n§7PDS: §f${session.pdsUrl}"))
-                        .append(Component.literal("\n\n§aYou can now sync your Minecraft data to AT Protocol!"))
-                )
-
-                logger.info("Player ${player.name.string} (${player.uuid}) authenticated as ${session.handle}")
-            } catch (e: Exception) {
-                // Record failed attempt
-                rateLimiter.recordFailure(player.uuid)
-                val status = rateLimiter.getStatus(player.uuid)
-                
-                // Audit log
-                SecurityAuditor.logAuthFailure(
-                    player.uuid, 
-                    SecurityUtils.sanitizeForLog(identifier),
-                    e.javaClass.simpleName,
-                    player.name.string
-                )
-                
-                if (status.attemptsRemaining > 0) {
-                    player.sendSystemMessage(
-                        Component.literal("§c✗ Authentication failed")
-                            .append(Component.literal("\n§7${sanitizeError(e)}"))
-                            .append(Component.literal("\n§7Attempts remaining: §f${status.attemptsRemaining}"))
-                            .append(Component.literal("\n\n§7Tip: Use an §fApp Password§7 from your AT Protocol account settings"))
-                            .append(Component.literal("\n§cNever use your main account password!"))
-                    )
-                } else {
-                    val lockUntil = status.lockedUntil
-                    val minutesRemaining = if (lockUntil != null) {
-                        Duration.between(Instant.now(), lockUntil).toMinutes()
-                    } else 30
-                    
-                    SecurityAuditor.logRateLimitHit(player.uuid, player.name.string)
-                    
-                    player.sendSystemMessage(
-                        Component.literal("§c✗ Authentication failed - Rate limit exceeded")
-                            .append(Component.literal("\n§7Too many failed attempts"))
-                            .append(Component.literal("\n§7Your account is locked for §f$minutesRemaining minutes"))
-                            .append(Component.literal("\n\n§7Please verify your app password and try again later"))
-                    )
-                }
-                
-                logger.error("Failed to authenticate player ${player.name.string}: ${e.javaClass.simpleName}")
-            }
-        }
-
-        return 1
-    }
-
-    /**
      * Logs out a player (removes their authentication session).
      */
     private fun logout(context: CommandContext<CommandSourceStack>): Int {
@@ -349,7 +226,7 @@ class AtProtoCommands(
                 {
                     Component.literal("§a✓ Logged out successfully")
                         .append(Component.literal("\n§7Your identity link remains active"))
-                        .append(Component.literal("\n§7Use §f/atproto login§7 to authenticate again"))
+                        .append(Component.literal("\n§7Use the mod config screen to authenticate again"))
                 },
                 false
             )
@@ -395,7 +272,7 @@ class AtProtoCommands(
                                     .append(Component.literal("\n§7You can sync data to AT Protocol"))
                             } else {
                                 Component.literal("\n§cAuthentication: §f✗ Not logged in")
-                                    .append(Component.literal("\n§7Use §f/atproto login§7 to authenticate"))
+                                    .append(Component.literal("\n§7Use the mod config screen to authenticate"))
                             }
                         )
                 },
@@ -485,7 +362,7 @@ class AtProtoCommands(
                         if (isLinked && isAuthenticated) {
                             Component.literal("\n\n§aReady to sync Minecraft data to AT Protocol!")
                         } else if (isLinked) {
-                            Component.literal("\n\n§eUse §f/atproto login§e to authenticate")
+                            Component.literal("\n\n§eUse the mod config screen to authenticate")
                         } else {
                             Component.literal("\n\n§eUse §f/atproto link <handle>§e to get started")
                         }
@@ -642,9 +519,7 @@ class AtProtoCommands(
                     .append(Component.literal("\n§e━━━ Client-Side Login (Type in Client) ━━━"))
                     .append(Component.literal("\n§eFor authentication, use the client-side commands:"))
                     .append(Component.literal("\n§f/atproto login <handle>"))
-                    .append(Component.literal("\n  §7OAuth browser login (Recommended!)"))
-                    .append(Component.literal("\n§f/atproto login <handle> <app-password>"))
-                    .append(Component.literal("\n  §7App password login (fallback)"))
+                    .append(Component.literal("\n  §7Login is handled client-side (use the mod config screen)"))
                     .append(Component.literal("\n§7Authentication happens on your computer"))
                     .append(Component.literal("\n§7Your password never goes to the server!"))
             },
@@ -692,14 +567,7 @@ class AtProtoCommands(
     }
     
     /**
-     * Periodic cleanup task for rate limiter.
-     * Should be called from the main mod initializer.
-     */
-    fun cleanup() {
-        rateLimiter.cleanup()
-    }
-
-    /**
+     * Builds a deterministic server ID from the server directory path.
      * Builds a deterministic server ID from the server directory path.
      * Matches the implementation in PlayerStatSyncService.
      */

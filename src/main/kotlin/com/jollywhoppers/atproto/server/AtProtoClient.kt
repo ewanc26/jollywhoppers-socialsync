@@ -88,12 +88,6 @@ class AtProtoClient(
     )
 
     @Serializable
-    data class CreateSessionRequest(
-        val identifier: String,
-        val password: String
-    )
-
-    @Serializable
     data class CreateSessionResponse(
         val did: String,
         val handle: String,
@@ -260,51 +254,6 @@ class AtProtoClient(
         val profile = json.decodeFromString<ProfileView>(response.body())
         logger.info("Retrieved profile successfully")
         profile
-    }
-
-    /**
-     * Creates an authenticated session using identifier and app password.
-     * This is the primary authentication method for the mod.
-     * Password is NOT logged for security.
-     */
-    suspend fun createSession(identifier: String, password: String): Result<CreateSessionResponse> = runCatching {
-        logger.info("Creating session for: ${SecurityUtils.sanitizeForLog(identifier)}")
-        
-        // Resolve to find the correct PDS
-        val pdsUrl = try {
-            val miniDoc = resolveMiniDoc(identifier).getOrThrow()
-            miniDoc.pds
-        } catch (e: Exception) {
-            logger.warn("Could not resolve PDS via Slingshot, trying fallback")
-            fallbackPdsUrl
-        }
-        
-        val requestBody = CreateSessionRequest(
-            identifier = identifier,
-            password = password // Password is never logged
-        )
-        
-        val url = "$pdsUrl/xrpc/com.atproto.server.createSession"
-        validateUrl(url)
-        
-        val request = HttpRequest.newBuilder()
-            .uri(URI.create(url))
-            .POST(HttpRequest.BodyPublishers.ofString(json.encodeToString(CreateSessionRequest.serializer(), requestBody)))
-            .header("Content-Type", "application/json")
-            .timeout(Duration.ofSeconds(15))
-            .build()
-
-        val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
-        
-        if (response.statusCode() != 200) {
-            // Don't log response body as it might contain sensitive info
-            logger.error("Session creation failed: HTTP ${response.statusCode()}")
-            throw Exception("Authentication failed")
-        }
-
-        val session = json.decodeFromString<CreateSessionResponse>(response.body())
-        logger.info("Session created successfully")
-        session
     }
 
     /**
