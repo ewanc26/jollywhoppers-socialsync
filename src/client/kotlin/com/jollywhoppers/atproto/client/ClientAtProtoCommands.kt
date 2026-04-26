@@ -4,7 +4,6 @@ import com.jollywhoppers.Atprotoconnect
 import com.jollywhoppers.atproto.oauth.OAuthManager
 import com.jollywhoppers.config.PreferencesManager
 import com.jollywhoppers.network.AtProtoPackets
-import com.jollywhoppers.screen.AtProtoConfigScreen
 import com.mojang.brigadier.CommandDispatcher
 import com.mojang.brigadier.arguments.StringArgumentType
 import com.mojang.brigadier.context.CommandContext
@@ -85,14 +84,6 @@ class ClientAtProtoCommands(
                 .then(
                     ClientCommandManager.literal("help")
                         .executes { context -> help(context) }
-                )
-                .then(
-                    ClientCommandManager.literal("config")
-                        .executes { context -> openConfigScreen(context) }
-                )
-                .then(
-                    ClientCommandManager.literal("gui")
-                        .executes { context -> openConfigScreen(context) }
                 )
                 .executes { context -> help(context) }
         )
@@ -265,16 +256,6 @@ class ClientAtProtoCommands(
     }
 
     /**
-     * Opens the configuration/login screen.
-     */
-    private fun openConfigScreen(context: CommandContext<FabricClientCommandSource>): Int {
-        Minecraft.getInstance().execute {
-            Minecraft.getInstance().setScreen(AtProtoConfigScreen(Minecraft.getInstance().screen))
-        }
-        return 1
-    }
-
-    /**
      * Shows current sync consent settings.
      * Reads from local client preferences and sends the current state
      * to the server via SyncPreferencesPacket.
@@ -381,10 +362,6 @@ class ClientAtProtoCommands(
     private fun help(context: CommandContext<FabricClientCommandSource>): Int {
         context.source.sendFeedback(
             Component.literal("§b━━━ AT Protocol Commands (Client-Side) ━━━")
-                .append(Component.literal("\n§f/atproto config §7or §f/atproto gui"))
-                .append(Component.literal("\n  §7Open the settings GUI (Recommended!)"))
-                .append(Component.literal("\n  §7Easy login interface with no typing needed"))
-                .append(Component.literal("\n"))
                 .append(Component.literal("\n§f/atproto login <handle>"))
                 .append(Component.literal("\n  §7OAuth browser login (Recommended!)"))
                 .append(Component.literal("\n  §7Opens your browser for secure authorisation"))
@@ -405,8 +382,9 @@ class ClientAtProtoCommands(
                 .append(Component.literal("\n§f/atproto status"))
                 .append(Component.literal("\n  §7Check your authentication status"))
                 .append(Component.literal("\n"))
-                .append(Component.literal("\n§e💡 Tip: You can also access settings via Mod Menu!"))
-                .append(Component.literal("\n§eNote: Authentication happens entirely on your computer."))
+                .append(Component.literal("\n§eAll settings (sync consent, frequencies, privacy)"))
+                .append(Component.literal("\n§eare available via Mod Menu in the mods list."))
+                .append(Component.literal("\n§eAuthentication happens entirely on your computer."))
                 .append(Component.literal("\n§eYour password never leaves your machine!"))
         )
         return 1
