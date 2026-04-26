@@ -58,12 +58,12 @@ object SecurityAuditor {
         log("SUSPICIOUS", uuid, message, ip)
     }
 
-    fun logPrivacyChange(uuid: UUID, playerName: String, publicStats: Boolean? = null, publicSessions: Boolean? = null) {
+    fun logSyncConsentChange(uuid: UUID, playerName: String, syncStats: Boolean? = null, syncSessions: Boolean? = null) {
         val changes = buildString {
-            if (publicStats != null) append(" publicStats=$publicStats")
-            if (publicSessions != null) append(" publicSessions=$publicSessions")
+            if (syncStats != null) append(" syncStats=$syncStats")
+            if (syncSessions != null) append(" syncSessions=$syncSessions")
         }
-        log("PRIVACY_CHANGE", uuid, "Player $playerName changed privacy settings:$changes", null)
+        log("SYNC_CONSENT_CHANGE", uuid, "Player $playerName changed sync consent:$changes", null)
     }
     
     private fun log(event: String, uuid: UUID?, message: String, ip: String?) {

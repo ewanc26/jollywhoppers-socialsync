@@ -66,10 +66,10 @@ class AchievementSyncService(
             return
         }
 
-        // Check privacy setting
-        val privacySettings = identityStore.getPrivacySettings(uuid)
-        if (privacySettings != null && !privacySettings.first) {
-            logger.debug("Skipping achievement sync for ${player.name.string}: publicStats is disabled")
+        // Check sync consent
+        val syncConsent = identityStore.getSyncConsent(uuid)
+        if (syncConsent != null && !syncConsent.first) {
+            logger.debug("Skipping achievement sync for ${player.name.string}: syncStats consent is disabled")
             return
         }
 

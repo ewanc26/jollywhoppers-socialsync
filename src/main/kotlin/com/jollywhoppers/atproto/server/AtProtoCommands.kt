@@ -80,28 +80,28 @@ class AtProtoCommands(
                         .executes { context -> status(context) }
                 )
                 .then(
-                    Commands.literal("privacy")
-                        .executes { context -> privacyStatus(context) }
+                    Commands.literal("sync")
+                        .executes { context -> syncConsentStatus(context) }
                         .then(
                             Commands.literal("stats")
                                 .then(
-                                    Commands.literal("public")
-                                        .executes { context -> setPrivacy(context, publicStats = true) }
+                                    Commands.literal("on")
+                                        .executes { context -> setSyncConsent(context, syncStats = true) }
                                 )
                                 .then(
-                                    Commands.literal("private")
-                                        .executes { context -> setPrivacy(context, publicStats = false) }
+                                    Commands.literal("off")
+                                        .executes { context -> setSyncConsent(context, syncStats = false) }
                                 )
                         )
                         .then(
                             Commands.literal("sessions")
                                 .then(
-                                    Commands.literal("public")
-                                        .executes { context -> setPrivacy(context, publicSessions = true) }
+                                    Commands.literal("on")
+                                        .executes { context -> setSyncConsent(context, syncSessions = true) }
                                 )
                                 .then(
-                                    Commands.literal("private")
-                                        .executes { context -> setPrivacy(context, publicSessions = false) }
+                                    Commands.literal("off")
+                                        .executes { context -> setSyncConsent(context, syncSessions = false) }
                                 )
                         )
                 )
@@ -474,9 +474,11 @@ class AtProtoCommands(
     }
 
     /**
-     * Shows current privacy settings.
+     * Shows current sync consent settings.
+     * AT Protocol data is always public — these controls determine whether
+     * data is written to AT Protocol at all.
      */
-    private fun privacyStatus(context: CommandContext<CommandSourceStack>): Int {
+    private fun syncConsentStatus(context: CommandContext<CommandSourceStack>): Int {
         val player = context.source.playerOrException
 
         if (!identityStore.isLinked(player.uuid)) {
@@ -487,22 +489,25 @@ class AtProtoCommands(
             return 0
         }
 
-        val privacySettings = identityStore.getPrivacySettings(player.uuid)
-        if (privacySettings == null) {
-            context.source.sendFailure(Component.literal("§cCould not read privacy settings"))
+        val syncConsent = identityStore.getSyncConsent(player.uuid)
+        if (syncConsent == null) {
+            context.source.sendFailure(Component.literal("§cCould not read sync consent settings"))
             return 0
         }
 
-        val (publicStats, publicSessions) = privacySettings
+        val (syncStats, syncSessions) = syncConsent
 
         context.source.sendSuccess(
             {
-                Component.literal("§b━━━ Privacy Settings ━━━")
-                    .append(Component.literal("\n§7Stats visibility: ${if (publicStats) "§aPublic" else "§cPrivate"}"))
-                    .append(Component.literal("\n§7Session visibility: ${if (publicSessions) "§aPublic" else "§cPrivate"}"))
+                Component.literal("§b━━━ Sync Consent ━━━")
+                    .append(Component.literal("\n§7Note: AT Protocol data is §falways public§7."))
+                    .append(Component.literal("\n§7These controls decide whether data is written at all."))
                     .append(Component.literal("\n"))
-                    .append(Component.literal("\n§7Use §f/atproto privacy stats <public|private>"))
-                    .append(Component.literal("\n§7Use §f/atproto privacy sessions <public|private>"))
+                    .append(Component.literal("\n§7Stats syncing: ${if (syncStats) "§aOn" else "§cOff"}"))
+                    .append(Component.literal("\n§7Session syncing: ${if (syncSessions) "§aOn" else "§cOff"}"))
+                    .append(Component.literal("\n"))
+                    .append(Component.literal("\n§7Use §f/atproto sync stats <on|off>"))
+                    .append(Component.literal("\n§7Use §f/atproto sync sessions <on|off>"))
             },
             false
         )
@@ -510,12 +515,12 @@ class AtProtoCommands(
     }
 
     /**
-     * Sets a privacy setting.
+     * Sets a sync consent setting.
      */
-    private fun setPrivacy(
+    private fun setSyncConsent(
         context: CommandContext<CommandSourceStack>,
-        publicStats: Boolean? = null,
-        publicSessions: Boolean? = null,
+        syncStats: Boolean? = null,
+        syncSessions: Boolean? = null,
     ): Int {
         val player = context.source.playerOrException
 
@@ -526,32 +531,32 @@ class AtProtoCommands(
             return 0
         }
 
-        val updated = identityStore.updatePrivacy(player.uuid, publicStats, publicSessions)
+        val updated = identityStore.updateSyncConsent(player.uuid, syncStats, syncSessions)
         if (updated == null) {
-            context.source.sendFailure(Component.literal("§cFailed to update privacy settings"))
+            context.source.sendFailure(Component.literal("§cFailed to update sync consent settings"))
             return 0
         }
 
         val changes = buildString {
-            if (publicStats != null) {
-                append("\n§7Stats: ${if (updated.publicStats) "§aPublic" else "§cPrivate"}")
+            if (syncStats != null) {
+                append("\n§7Stats syncing: ${if (updated.syncStats) "§aOn" else "§cOff"}")
             }
-            if (publicSessions != null) {
-                append("\n§7Sessions: ${if (updated.publicSessions) "§aPublic" else "§cPrivate"}")
+            if (syncSessions != null) {
+                append("\n§7Session syncing: ${if (updated.syncSessions) "§aOn" else "§cOff"}")
             }
         }
 
         context.source.sendSuccess(
             {
-                Component.literal("§a✓ Privacy settings updated")
+                Component.literal("§a✓ Sync consent updated")
                     .append(Component.literal(changes))
             },
             false
         )
 
-        SecurityAuditor.logPrivacyChange(player.uuid, player.name.string, publicStats, publicSessions)
+        SecurityAuditor.logSyncConsentChange(player.uuid, player.name.string, syncStats, syncSessions)
 
-        // Sync the player.profile record to reflect the privacy change
+        // Sync the player.profile record to reflect the change
         profileService?.let { service ->
             val server = context.source.server
             val serverId = buildServerId(server)
@@ -585,12 +590,15 @@ class AtProtoCommands(
                     .append(Component.literal("\n§f/atproto status"))
                     .append(Component.literal("\n  §7Check connection status"))
                     .append(Component.literal("\n"))
-                    .append(Component.literal("\n§f/atproto privacy"))
-                    .append(Component.literal("\n  §7View your privacy settings"))
-                    .append(Component.literal("\n§f/atproto privacy stats <public|private>"))
-                    .append(Component.literal("\n  §7Control whether your stats are visible"))
-                    .append(Component.literal("\n§f/atproto privacy sessions <public|private>"))
-                    .append(Component.literal("\n  §7Control whether your sessions are visible"))
+                    .append(Component.literal("\n§f/atproto sync"))
+                    .append(Component.literal("\n  §7View your sync consent settings"))
+                    .append(Component.literal("\n§f/atproto sync stats <on|off>"))
+                    .append(Component.literal("\n  §7Control whether your stats are synced"))
+                    .append(Component.literal("\n§f/atproto sync sessions <on|off>"))
+                    .append(Component.literal("\n  §7Control whether your sessions are synced"))
+                    .append(Component.literal("\n"))
+                    .append(Component.literal("\n§7Note: AT Protocol data is §falways public§7."))
+                    .append(Component.literal("\n§7Turning sync off prevents data from being written."))
                     .append(Component.literal("\n"))
                     .append(Component.literal("\n§f/atproto whois <player or handle>"))
                     .append(Component.literal("\n  §7Look up another player's AT Protocol identity"))

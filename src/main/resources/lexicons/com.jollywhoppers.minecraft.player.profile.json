@@ -4,7 +4,7 @@
   "defs": {
     "main": {
       "type": "record",
-      "description": "Links a Minecraft player identity to an AT Protocol account. This is the primary identity record.",
+      "description": "Links a Minecraft player identity to an AT Protocol account. This is the primary identity record. Note: all AT Protocol data is public by design — sync consent is managed locally, not via record fields.",
       "key": "literal:self",
       "record": {
         "type": "object",
@@ -46,16 +46,6 @@
             "type": "string",
             "format": "datetime",
             "description": "When this profile was last updated"
-          },
-          "publicStats": {
-            "type": "boolean",
-            "description": "Whether stats should be publicly visible",
-            "default": true
-          },
-          "publicSessions": {
-            "type": "boolean",
-            "description": "Whether play sessions should be publicly visible",
-            "default": true
           }
         }
       }
