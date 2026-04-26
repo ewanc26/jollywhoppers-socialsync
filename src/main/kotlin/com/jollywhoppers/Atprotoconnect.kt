@@ -6,13 +6,16 @@ import com.jollywhoppers.atproto.server.AtProtoCommands
 import com.jollywhoppers.atproto.server.AtProtoSessionManager
 import com.jollywhoppers.atproto.server.PlayerIdentityStore
 import com.jollywhoppers.atproto.server.PlayerProfileService
+import com.jollywhoppers.atproto.server.PlayerSessionSyncService
 import com.jollywhoppers.atproto.server.PlayerStatSyncService
 import com.jollywhoppers.atproto.server.RecordManager
+import com.jollywhoppers.atproto.server.ServerStatusSyncService
 import com.jollywhoppers.security.SecurityAuditor
 import net.fabricmc.api.ModInitializer
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
 import net.fabricmc.loader.api.FabricLoader
 import org.slf4j.LoggerFactory
 import java.util.concurrent.Executors
@@ -42,6 +45,12 @@ object Atprotoconnect : ModInitializer {
         private set
 
     lateinit var achievementSyncService: AchievementSyncService
+        private set
+
+    lateinit var sessionSyncService: PlayerSessionSyncService
+        private set
+
+    lateinit var serverStatusSyncService: ServerStatusSyncService
         private set
 
     lateinit var commands: AtProtoCommands
@@ -111,6 +120,22 @@ object Atprotoconnect : ModInitializer {
             AchievementSyncService.INSTANCE = achievementSyncService
             logger.info("Achievement sync service initialized")
 
+            // Initialize session sync service
+            sessionSyncService = PlayerSessionSyncService(
+                recordManager = recordManager,
+                sessionManager = sessionManager,
+                identityStore = identityStore,
+            )
+            logger.info("Session sync service initialized")
+
+            // Initialize server status sync service
+            serverStatusSyncService = ServerStatusSyncService(
+                recordManager = recordManager,
+                sessionManager = sessionManager,
+                identityStore = identityStore,
+            )
+            logger.info("Server status sync service initialized")
+
             // Initialize command handler (with rate limiting and audit logging)
             commands = AtProtoCommands(atProtoClient, identityStore, sessionManager, profileService)
 
@@ -128,13 +153,38 @@ object Atprotoconnect : ModInitializer {
                 statSyncService.onServerTick(server)
             }
             logger.info("Minecraft stat sync tick handler registered")
+
+            // Register server status sync (every 5 minutes = 6000 ticks)
+            var serverStatusTickCounter = 0L
+            ServerTickEvents.END_SERVER_TICK.register { server ->
+                serverStatusTickCounter++
+                if (serverStatusTickCounter % 6000L == 0L) {
+                    serverStatusSyncService.onSyncTick(server)
+                }
+            }
+            logger.info("Server status sync tick handler registered (5-minute interval)")
+
+            // Register player join/leave events for session tracking
+            ServerPlayConnectionEvents.JOIN.register { handler, _, server ->
+                val player = (handler as? net.minecraft.server.network.ServerGamePacketListenerImpl)?.player
+                if (player != null) {
+                    sessionSyncService.onPlayerJoin(player, server)
+                }
+            }
+            ServerPlayConnectionEvents.DISCONNECT.register { handler, server ->
+                val player = (handler as? net.minecraft.server.network.ServerGamePacketListenerImpl)?.player
+                if (player != null) {
+                    sessionSyncService.onPlayerLeave(player.uuid, "disconnected", server)
+                }
+            }
+            logger.info("Session tracking events registered")
             
             // Schedule periodic cleanup tasks
             setupCleanupTasks()
             
             // Register server lifecycle events
-            ServerLifecycleEvents.SERVER_STOPPING.register { _ ->
-                onServerStopping()
+            ServerLifecycleEvents.SERVER_STOPPING.register { server ->
+                onServerStopping(server)
             }
 
             logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
@@ -146,9 +196,11 @@ object Atprotoconnect : ModInitializer {
             logger.info("  ✓ Security audit logging")
             logger.info("  ✓ Enhanced SSRF protection")
             logger.info("  ✓ Automatic Minecraft stat syncing")
-            logger.info("  ✓ Privacy controls (stats/sessions visibility)")
+            logger.info("  ✓ Sync consent controls (stats/sessions)")
             logger.info("  ✓ Player profile record management")
             logger.info("  ✓ Achievement syncing to AT Protocol")
+            logger.info("  ✓ Play session tracking")
+            logger.info("  ✓ Server status snapshots")
             logger.info("Players can use /atproto help to see available commands")
             logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         } catch (e: Exception) {
@@ -177,10 +229,20 @@ object Atprotoconnect : ModInitializer {
     /**
      * Called when the server is stopping.
      */
-    private fun onServerStopping() {
+    private fun onServerStopping(server: net.minecraft.server.MinecraftServer) {
         logger.info("Server stopping, shutting down atproto-connect components")
-        
+
         try {
+            // Flush open sessions before shutting down
+            if (::sessionSyncService.isInitialized) {
+                sessionSyncService.flushAllSessions(server)
+                sessionSyncService.shutdown()
+            }
+
+            if (::serverStatusSyncService.isInitialized) {
+                serverStatusSyncService.shutdown()
+            }
+
             if (::statSyncService.isInitialized) {
                 statSyncService.shutdown()
             }
@@ -201,7 +263,7 @@ object Atprotoconnect : ModInitializer {
         } catch (e: Exception) {
             logger.error("Error during shutdown", e)
         }
-        
+
         logger.info("atproto-connect mod shut down successfully")
     }
 
