@@ -2,6 +2,7 @@ package com.jollywhoppers.atproto.client
 
 import com.jollywhoppers.atproto.oauth.OAuthSession
 import com.jollywhoppers.atproto.oauth.DpopProof
+import com.jollywhoppers.config.PreferencesManager
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
@@ -189,12 +190,26 @@ class ClientSessionManager(
 
     /**
      * Removes the current session (logout).
+     * If clearLocalCacheOnLogout is enabled, also deletes the session file.
      */
     fun deleteSession() {
         currentSession = null
         currentOAuthSession = null
         dpopKeyPair = null
-        save()
+
+        if (PreferencesManager.get().clearLocalCacheOnLogout) {
+            // Delete session file and key file
+            try {
+                Files.deleteIfExists(storageFile)
+                Files.deleteIfExists(keyFile)
+                logger.info("Session and encryption key deleted from disk")
+            } catch (e: Exception) {
+                logger.warn("Failed to delete session files: ${e.message}")
+            }
+        } else {
+            save()
+        }
+
         logger.info("Session deleted")
     }
 
@@ -289,25 +304,33 @@ class ClientSessionManager(
     }
 
     /**
-     * Saves session to disk with AES-256-GCM encryption.
-     * The session file is encrypted using the client's local key.
+     * Saves session to disk.
+     * If encryptedLocalStorage is enabled (default), uses AES-256-GCM encryption.
+     * Otherwise, saves as plaintext JSON (not recommended).
      */
     private fun save() {
         try {
             Files.createDirectories(storageFile.parent)
 
+            val useEncryption = PreferencesManager.get().encryptedLocalStorage
+
             val storage = SessionStorage(
                 version = 3,
                 session = currentSession,
-                encrypted = true,
+                encrypted = useEncryption,
             )
 
             val plaintext = json.encodeToString(storage)
-            val encrypted = ClientSecurityUtils.encrypt(plaintext, encryptionKey)
+
+            val content = if (useEncryption) {
+                ClientSecurityUtils.encrypt(plaintext, encryptionKey)
+            } else {
+                plaintext
+            }
 
             Files.writeString(
                 storageFile,
-                encrypted,
+                content,
                 StandardOpenOption.CREATE,
                 StandardOpenOption.TRUNCATE_EXISTING
             )
@@ -320,7 +343,7 @@ class ClientSessionManager(
                 // Not critical — best effort
             }
 
-            logger.debug("Saved encrypted session to disk")
+            logger.debug("Saved session to disk (encrypted: $useEncryption)")
         } catch (e: Exception) {
             logger.error("Failed to save session", e)
         }

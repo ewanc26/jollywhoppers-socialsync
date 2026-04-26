@@ -191,7 +191,7 @@ For development with auto-reload:
 ```plaintext
 src/main/
 ├── kotlin/com/jollywhoppers/
-│   ├── Atprotoconnect.kt                    # Main mod initializer
+│   ├── socialsync.kt                    # Main mod initializer
 │   └── atproto/
 │       ├── AtProtoClient.kt                 # HTTP client with Slingshot integration
 │       ├── AtProtoSessionManager.kt         # Authentication & token management
@@ -364,9 +364,9 @@ All configuration files are stored in `config/atproto-connect/`:
 * [x] Implement achievement syncing
 * [x] Implement play session tracking
 * [x] Implement server status snapshots
-* [ ] Create example AppView for displaying Minecraft data
-* [ ] Write comprehensive documentation
-* [ ] Add automated tests
+* [x] Create example AppView for displaying Minecraft data
+* [x] Write comprehensive documentation
+* [x] Add automated tests
 * [ ] Publish to Modrinth/CurseForge
 
 ## Contributing
@@ -379,6 +379,16 @@ This project is in active development. If you're interested in contributing:
 4. Submit a pull request with a clear description
 
 Please follow Kotlin coding conventions and include tests for new features.
+
+## Documentation
+
+- [API Reference](docs/API_REFERENCE.md) - Complete API documentation for all services
+- [Architecture Guide](docs/ARCHITECTURE.md) - System architecture, data flow, deployment
+- [AppView Guide](docs/APPVIEW.md) - Display and query Minecraft data via AT Protocol
+- [AppView Quick Start](docs/APPVIEW_QUICKSTART.md) - Setup guide for server operators
+- [Testing Guide](docs/TEST_GUIDE.md) - Automated testing and test suite
+- [Lexicon Schemas](src/main/resources/lexicons/README.md) - Data schema specifications
+- [Examples](docs/examples/) - Code examples for common tasks
 
 ## Resources
 
@@ -422,6 +432,6 @@ This is an experimental project exploring the intersection of decentralized prot
 
 ---
 
-**Version**: 0.4.0
+**Version**: 0.5.0
 **Repository**: `git@tangled.sh:jollywhoppers.com/socialsync`
 **Status**: Alpha - Not Production Ready

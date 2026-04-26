@@ -5,7 +5,7 @@ import com.terraformersmc.modmenu.api.ModMenuApi
 import com.jollywhoppers.screen.AtProtoConfigScreen
 
 /**
- * Mod Menu integration for ATProto Connect.
+ * Mod Menu integration for Social Sync.
  * Provides a configuration screen for authentication and settings.
  */
 class ModMenuIntegration : ModMenuApi {

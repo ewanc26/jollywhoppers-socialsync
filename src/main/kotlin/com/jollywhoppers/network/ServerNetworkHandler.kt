@@ -1,6 +1,6 @@
 package com.jollywhoppers.network
 
-import com.jollywhoppers.Atprotoconnect
+import com.jollywhoppers.socialsync
 import com.jollywhoppers.security.SecurityAuditor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -66,7 +66,7 @@ object ServerNetworkHandler {
     private suspend fun handleAuthentication(player: ServerPlayer, packet: AtProtoPackets.AuthenticatePacket) {
         try {
             // Verify the token is valid by making a test API call
-            val verifyResult = Atprotoconnect.atProtoClient.xrpcRequest(
+            val verifyResult = socialsync.atProtoClient.xrpcRequest(
                 method = "GET",
                 endpoint = "com.atproto.server.getSession",
                 accessJwt = packet.accessJwt,
@@ -85,7 +85,7 @@ object ServerNetworkHandler {
             }
 
             // Token is valid, store the session
-            Atprotoconnect.sessionManager.storeVerifiedSession(
+            socialsync.sessionManager.storeVerifiedSession(
                 uuid = player.uuid,
                 did = packet.did,
                 handle = packet.handle,
@@ -96,8 +96,8 @@ object ServerNetworkHandler {
             )
 
             // Link identity if not already linked
-            if (!Atprotoconnect.identityStore.isLinked(player.uuid)) {
-                Atprotoconnect.identityStore.linkIdentity(player.uuid, packet.did, packet.handle)
+            if (!socialsync.identityStore.isLinked(player.uuid)) {
+                socialsync.identityStore.linkIdentity(player.uuid, packet.did, packet.handle)
                 SecurityAuditor.logIdentityLink(player.uuid, packet.handle, player.name.string)
             }
 
@@ -117,8 +117,8 @@ object ServerNetworkHandler {
      * Handles logout by removing the player's session.
      */
     private fun handleLogout(player: ServerPlayer) {
-        val identity = Atprotoconnect.identityStore.getIdentity(player.uuid)
-        Atprotoconnect.sessionManager.deleteSession(player.uuid)
+        val identity = socialsync.identityStore.getIdentity(player.uuid)
+        socialsync.sessionManager.deleteSession(player.uuid)
         
         if (identity != null) {
             SecurityAuditor.logLogout(player.uuid, identity.handle, player.name.string)

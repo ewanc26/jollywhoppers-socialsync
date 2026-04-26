@@ -22,7 +22,7 @@ import org.slf4j.LoggerFactory
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
-object Atprotoconnect : ModInitializer {
+object socialsync : ModInitializer {
     private val logger = LoggerFactory.getLogger("atproto-connect")
     private const val MOD_ID = "atproto-connect"
 
