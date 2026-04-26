@@ -18,15 +18,16 @@ import java.util.UUID
  * When a player links their identity, this service creates or updates their
  * `com.jollywhoppers.minecraft.player.profile` record with the `literal:self` rkey.
  *
- * Note: AT Protocol data is always public. Sync consent (syncStats, syncSessions)
- * is stored locally in PlayerIdentityStore and controls whether data is written
- * at all — it is NOT included in the profile record since it would give a false
- * sense of privacy control.
+ * Note: AT Protocol data is always public. Sync consent is stored locally
+ * in PlayerSyncPreferencesStore and controls whether data is written at all —
+ * it is NOT included in the profile record since it would give a false sense
+ * of privacy control.
  */
 class PlayerProfileService(
     private val recordManager: RecordManager,
     private val sessionManager: AtProtoSessionManager,
     private val identityStore: PlayerIdentityStore,
+    private val syncPreferencesStore: PlayerSyncPreferencesStore,
 ) {
     private val logger = LoggerFactory.getLogger("atproto-connect:profile")
     private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -62,6 +63,16 @@ class PlayerProfileService(
 
                 if (!sessionManager.hasSession(playerUuid)) {
                     logger.warn("Cannot sync profile: player $playerUuid has no active session")
+                    return@launch
+                }
+
+                // Profile records are identity declarations, not data sync.
+                // Only skip if the player has explicitly disabled ALL sync categories.
+                val prefs = syncPreferencesStore.getOrDefault(playerUuid)
+                if (!prefs.syncStatsEnabled && !prefs.syncSessionsEnabled
+                    && !prefs.syncAchievementsEnabled && !prefs.syncServerStatusEnabled
+                ) {
+                    logger.debug("Skipping profile sync for $playerUuid: all sync categories disabled")
                     return@launch
                 }
 

@@ -121,6 +121,7 @@ object Atprotoconnect : ModInitializer {
                 recordManager = recordManager,
                 sessionManager = sessionManager,
                 identityStore = identityStore,
+                syncPreferencesStore = syncPreferencesStore,
             )
             logger.info("Player profile service initialized")
 
