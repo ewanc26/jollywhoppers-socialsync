@@ -65,6 +65,26 @@ object SecurityAuditor {
         }
         log("SYNC_CONSENT_CHANGE", uuid, "Player $playerName changed sync consent:$changes", null)
     }
+
+    fun logSyncPreferenceChange(
+        playerId: UUID,
+        playerName: String,
+        stats: Boolean,
+        sessions: Boolean,
+        achievements: Boolean,
+        serverStatus: Boolean,
+    ) {
+        log(
+            "SYNC_PREFERENCE_UPDATE",
+            playerId,
+            "Player $playerName updated sync preferences: stats=$stats sessions=$sessions achievements=$achievements serverStatus=$serverStatus",
+            null
+        )
+    }
+
+    fun logSecurityEvent(eventType: String, uuid: UUID?, message: String) {
+        log(eventType, uuid, message, null)
+    }
     
     private fun log(event: String, uuid: UUID?, message: String, ip: String?) {
         if (!initialized) {
