@@ -147,6 +147,8 @@ object Atprotoconnect : ModInitializer {
             
             // Register network packet handlers
             com.jollywhoppers.network.ServerNetworkHandler.register()
+            com.jollywhoppers.network.ServerNetworkHandlers.register()
+            logger.info("Network packet handlers registered")
 
             // Register periodic Minecraft stat sync checks
             ServerTickEvents.END_SERVER_TICK.register { server ->
