@@ -41,9 +41,9 @@ class PlayerIdentityStore(private val storageFile: Path) {
         val handle: String,
         val linkedAt: Long = System.currentTimeMillis(),
         val lastVerified: Long = System.currentTimeMillis(),
-        /** Whether the player consents to syncing stats to AT Protocol. Default: true. */
+        // Legacy fields kept for migration deserialization only.
+        // Sync consent is now managed by PlayerSyncPreferencesStore.
         val syncStats: Boolean = true,
-        /** Whether the player consents to syncing play sessions to AT Protocol. Default: true. */
         val syncSessions: Boolean = true,
     )
 
@@ -147,32 +147,33 @@ class PlayerIdentityStore(private val storageFile: Path) {
     }
 
     /**
-     * Updates sync consent settings for a player's identity.
-     * These are local-only controls — AT Protocol data is always public,
-     * so the real privacy is not writing data the user doesn't want published.
-     * @return The updated identity, or null if the player is not linked
+     * Extracts legacy sync consent values for migration to PlayerSyncPreferencesStore.
+     * Returns a map of UUID -> Pair(syncStats, syncSessions).
+     * After migration, these fields are no longer authoritative.
      */
-    fun updateSyncConsent(uuid: UUID, syncStats: Boolean? = null, syncSessions: Boolean? = null): PlayerIdentity? {
-        val identity = identities[uuid] ?: return null
-        val updated = identity.copy(
-            syncStats = syncStats ?: identity.syncStats,
-            syncSessions = syncSessions ?: identity.syncSessions,
-            lastVerified = System.currentTimeMillis(),
-        )
-        identities[uuid] = updated
-        save()
-        logger.info("Updated sync consent for $uuid: syncStats=${updated.syncStats}, syncSessions=${updated.syncSessions}")
-        return updated
+    fun extractLegacySyncConsent(): Map<UUID, Pair<Boolean, Boolean>> {
+        return identities.entries.associate { (uuid, identity) ->
+            uuid to Pair(identity.syncStats, identity.syncSessions)
+        }
     }
 
     /**
-     * Gets the sync consent settings for a player.
-     * Returns null if the player is not linked.
-     * Pair(syncStats, syncSessions)
+     * Clears legacy sync consent fields from all identities after migration.
+     * Sets syncStats and syncSessions to their defaults (true) since
+     * PlayerSyncPreferencesStore is now the source of truth.
      */
-    fun getSyncConsent(uuid: UUID): Pair<Boolean, Boolean>? {
-        val identity = identities[uuid] ?: return null
-        return Pair(identity.syncStats, identity.syncSessions)
+    fun clearLegacySyncConsent() {
+        var changed = false
+        identities.forEach { (uuid, identity) ->
+            if (!identity.syncStats || !identity.syncSessions) {
+                identities[uuid] = identity.copy(syncStats = true, syncSessions = true)
+                changed = true
+            }
+        }
+        if (changed) {
+            save()
+            logger.info("Cleared legacy sync consent fields after migration")
+        }
     }
 
     /**

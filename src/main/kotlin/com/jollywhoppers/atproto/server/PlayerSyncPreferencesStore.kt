@@ -163,6 +163,44 @@ object PlayerSyncPreferencesStore {
     }
 
     /**
+     * Migrate legacy sync consent from PlayerIdentityStore.
+     * Called once during mod initialization. Reads the old syncStats/syncSessions
+     * values and writes them into the preferences store for any player that
+     * doesn't already have a preferences file.
+     */
+    fun migrateFromIdentityStore(identityStore: PlayerIdentityStore) {
+        val legacyConsent = identityStore.extractLegacySyncConsent()
+        var migrated = 0
+
+        legacyConsent.forEach { (uuid, consent) ->
+            val (syncStats, syncSessions) = consent
+            val existing = getOrDefault(uuid)
+
+            // Only migrate if the player has default preferences (never customised)
+            // and the legacy values differ from defaults
+            val isDefault = existing.syncStatsEnabled && existing.syncSessionsEnabled
+                && existing.syncAchievementsEnabled && !existing.syncServerStatusEnabled
+            val hasNonDefaultLegacy = !syncStats || !syncSessions
+
+            if (isDefault && hasNonDefaultLegacy) {
+                save(existing.copy(
+                    syncStatsEnabled = syncStats,
+                    syncSessionsEnabled = syncSessions,
+                ))
+                migrated++
+                logger.info("Migrated sync consent for player $uuid: stats=$syncStats, sessions=$syncSessions")
+            }
+        }
+
+        // Clear the legacy fields from the identity store
+        identityStore.clearLegacySyncConsent()
+
+        if (migrated > 0) {
+            logger.info("Migrated sync consent for $migrated players from identity store")
+        }
+    }
+
+    /**
      * Get all players with preferences (for admin operations)
      */
     fun getAllPlayerIds(): List<UUID> {

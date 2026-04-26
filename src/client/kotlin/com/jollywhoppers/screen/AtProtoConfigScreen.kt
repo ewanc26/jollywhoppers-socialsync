@@ -2,6 +2,7 @@ package com.jollywhoppers.screen
 
 import com.jollywhoppers.AtprotoconnectClient
 import com.jollywhoppers.atproto.oauth.OAuthManager
+import com.jollywhoppers.config.PreferencesManager
 import com.jollywhoppers.network.AtProtoPackets
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -110,6 +111,50 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
             .build()
             .also { addRenderableWidget(it) }
 
+        // Sync consent toggles
+        val syncStartY = startY + 125
+        val prefs = PreferencesManager.get()
+
+        // Stats toggle
+        addRenderableWidget(
+            Button.builder(
+                Component.literal("Stats: ${if (prefs.syncStatsEnabled) "§aOn" else "§cOff"}"),
+                Button.OnPress { toggleSyncConsent("stats") }
+            )
+                .bounds(centerX - 155, syncStartY, 150, 20)
+                .build()
+        )
+
+        // Sessions toggle
+        addRenderableWidget(
+            Button.builder(
+                Component.literal("Sessions: ${if (prefs.syncSessionsEnabled) "§aOn" else "§cOff"}"),
+                Button.OnPress { toggleSyncConsent("sessions") }
+            )
+                .bounds(centerX + 5, syncStartY, 150, 20)
+                .build()
+        )
+
+        // Achievements toggle
+        addRenderableWidget(
+            Button.builder(
+                Component.literal("Achievements: ${if (prefs.syncAchievementsEnabled) "§aOn" else "§cOff"}"),
+                Button.OnPress { toggleSyncConsent("achievements") }
+            )
+                .bounds(centerX - 155, syncStartY + 25, 150, 20)
+                .build()
+        )
+
+        // Server status toggle
+        addRenderableWidget(
+            Button.builder(
+                Component.literal("Server Status: ${if (prefs.syncServerStatusEnabled) "§aOn" else "§cOff"}"),
+                Button.OnPress { toggleSyncConsent("server-status") }
+            )
+                .bounds(centerX + 5, syncStartY + 25, 150, 20)
+                .build()
+        )
+
         // Done button
         addRenderableWidget(
             Button.builder(
@@ -160,6 +205,15 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
             "App Password (optional):",
             width / 2 - 150,
             78,
+            0xA0A0A0
+        )
+
+        // Sync consent label
+        graphics.drawCenteredString(
+            font,
+            "Sync Consent",
+            width / 2,
+            178,
             0xA0A0A0
         )
 
@@ -369,6 +423,43 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
         updateUIState()
 
         logger.info("Logged out, notified server")
+    }
+
+    /**
+     * Toggles a sync consent category and sends the change to the server.
+     */
+    private fun toggleSyncConsent(category: String) {
+        val prefs = PreferencesManager.get()
+        val newValue = when (category) {
+            "stats" -> !prefs.syncStatsEnabled
+            "sessions" -> !prefs.syncSessionsEnabled
+            "achievements" -> !prefs.syncAchievementsEnabled
+            "server-status" -> !prefs.syncServerStatusEnabled
+            else -> return
+        }
+
+        when (category) {
+            "stats" -> PreferencesManager.updateSyncConsent(stats = newValue)
+            "sessions" -> PreferencesManager.updateSyncConsent(sessions = newValue)
+            "achievements" -> PreferencesManager.updateSyncConsent(achievements = newValue)
+            "server-status" -> PreferencesManager.updateSyncConsent(serverStatus = newValue)
+        }
+
+        // Send updated preferences to server
+        val updated = PreferencesManager.get()
+        val packet = AtProtoPackets.SyncPreferencesPacket(
+            syncStatsEnabled = updated.syncStatsEnabled,
+            syncSessionsEnabled = updated.syncSessionsEnabled,
+            syncAchievementsEnabled = updated.syncAchievementsEnabled,
+            syncServerStatusEnabled = updated.syncServerStatusEnabled,
+            statsSyncFrequency = updated.statsSyncFrequency,
+            sessionSyncFrequency = updated.sessionSyncFrequency,
+            achievementSyncFrequency = updated.achievementSyncFrequency,
+        )
+        ClientPlayNetworking.send(packet)
+
+        // Rebuild screen to update button labels
+        rebuildWidgets()
     }
 
     private fun onHelpClicked() {

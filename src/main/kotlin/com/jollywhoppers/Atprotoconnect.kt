@@ -8,6 +8,7 @@ import com.jollywhoppers.atproto.server.PlayerIdentityStore
 import com.jollywhoppers.atproto.server.PlayerProfileService
 import com.jollywhoppers.atproto.server.PlayerSessionSyncService
 import com.jollywhoppers.atproto.server.PlayerStatSyncService
+import com.jollywhoppers.atproto.server.PlayerSyncPreferencesStore
 import com.jollywhoppers.atproto.server.RecordManager
 import com.jollywhoppers.atproto.server.ServerStatusSyncService
 import com.jollywhoppers.security.SecurityAuditor
@@ -53,6 +54,9 @@ object Atprotoconnect : ModInitializer {
     lateinit var serverStatusSyncService: ServerStatusSyncService
         private set
 
+    lateinit var syncPreferencesStore: PlayerSyncPreferencesStore
+        private set
+
     lateinit var commands: AtProtoCommands
         private set
     
@@ -93,12 +97,21 @@ object Atprotoconnect : ModInitializer {
             recordManager = RecordManager(sessionManager)
             logger.info("Record manager initialized")
 
+            // Initialize sync preferences store (single source of truth for consent)
+            syncPreferencesStore = PlayerSyncPreferencesStore
+            logger.info("Sync preferences store initialized")
+
+            // Migrate legacy sync consent from PlayerIdentityStore
+            syncPreferencesStore.migrateFromIdentityStore(identityStore)
+            logger.info("Legacy sync consent migration completed")
+
             // Initialize automatic Minecraft stat syncing
             val statSyncStatePath = configDir.resolve("minecraft-stat-sync-state.json")
             statSyncService = PlayerStatSyncService(
                 recordManager = recordManager,
                 sessionManager = sessionManager,
                 identityStore = identityStore,
+                syncPreferencesStore = syncPreferencesStore,
                 storageFile = statSyncStatePath
             )
             logger.info("Minecraft stat sync service initialized at: $statSyncStatePath")
@@ -116,6 +129,7 @@ object Atprotoconnect : ModInitializer {
                 recordManager = recordManager,
                 sessionManager = sessionManager,
                 identityStore = identityStore,
+                syncPreferencesStore = syncPreferencesStore,
             )
             AchievementSyncService.INSTANCE = achievementSyncService
             logger.info("Achievement sync service initialized")
@@ -125,6 +139,7 @@ object Atprotoconnect : ModInitializer {
                 recordManager = recordManager,
                 sessionManager = sessionManager,
                 identityStore = identityStore,
+                syncPreferencesStore = syncPreferencesStore,
             )
             logger.info("Session sync service initialized")
 
@@ -133,11 +148,12 @@ object Atprotoconnect : ModInitializer {
                 recordManager = recordManager,
                 sessionManager = sessionManager,
                 identityStore = identityStore,
+                syncPreferencesStore = syncPreferencesStore,
             )
             logger.info("Server status sync service initialized")
 
             // Initialize command handler (with rate limiting and audit logging)
-            commands = AtProtoCommands(atProtoClient, identityStore, sessionManager, profileService)
+            commands = AtProtoCommands(atProtoClient, identityStore, sessionManager, syncPreferencesStore, profileService)
 
             // Register commands
             CommandRegistrationCallback.EVENT.register { dispatcher, _, _ ->
@@ -198,7 +214,7 @@ object Atprotoconnect : ModInitializer {
             logger.info("  ✓ Security audit logging")
             logger.info("  ✓ Enhanced SSRF protection")
             logger.info("  ✓ Automatic Minecraft stat syncing")
-            logger.info("  ✓ Sync consent controls (stats/sessions)")
+            logger.info("  ✓ Sync consent controls (stats/sessions/achievements/server-status)")
             logger.info("  ✓ Player profile record management")
             logger.info("  ✓ Achievement syncing to AT Protocol")
             logger.info("  ✓ Play session tracking")

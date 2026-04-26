@@ -32,6 +32,7 @@ class ServerStatusSyncService(
     private val recordManager: RecordManager,
     private val sessionManager: AtProtoSessionManager,
     private val identityStore: PlayerIdentityStore,
+    private val syncPreferencesStore: PlayerSyncPreferencesStore,
 ) {
     private val logger = LoggerFactory.getLogger("atproto-connect:server-status")
     private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -48,13 +49,15 @@ class ServerStatusSyncService(
     fun onSyncTick(server: MinecraftServer) {
         if (!server.isRunning || server.isStopped) return
 
-        // Find an authenticated player to use their session
+        // Find an authenticated player who has consented to server status syncing
         val authenticatedPlayer = server.playerList.players.firstOrNull { player ->
-            identityStore.isLinked(player.uuid) && sessionManager.hasSession(player.uuid)
+            identityStore.isLinked(player.uuid)
+                && sessionManager.hasSession(player.uuid)
+                && syncPreferencesStore.getOrDefault(player.uuid).shouldSync("server_status")
         }
 
         if (authenticatedPlayer == null) {
-            logger.debug("Skipping server status sync: no authenticated players online")
+            logger.debug("Skipping server status sync: no authenticated players with server_status consent online")
             return
         }
 
