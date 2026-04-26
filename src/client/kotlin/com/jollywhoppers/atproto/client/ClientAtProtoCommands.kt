@@ -1,6 +1,6 @@
 package com.jollywhoppers.atproto.client
 
-import com.jollywhoppers.Atprotoconnect
+import com.jollywhoppers.socialsync
 import com.jollywhoppers.atproto.oauth.OAuthManager
 import com.jollywhoppers.config.PreferencesManager
 import com.jollywhoppers.network.AtProtoPackets

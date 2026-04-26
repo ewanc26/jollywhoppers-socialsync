@@ -5,8 +5,6 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 import kotlinx.serialization.serializer
 import org.slf4j.LoggerFactory
-import java.time.Instant
-import java.util.*
 
 /**
  * Comprehensive record management for AT Protocol repositories.
@@ -412,15 +410,7 @@ class RecordManager(
      * Generates a new TID (Timestamp Identifier) for use as a record key.
      * TIDs are sortable timestamps with sub-millisecond precision.
      */
-    fun generateTID(): String {
-        // TID format: base32-encoded timestamp + clock ID
-        val timestamp = Instant.now().toEpochMilli()
-        val clockId = Random().nextInt(1024)
-        
-        // Simplified TID generation (real implementation would use proper base32)
-        // For production, use a proper TID library
-        return "${timestamp.toString(32)}${clockId.toString(32)}"
-    }
+    fun generateTID(): String = Tid.generate()
 
     /**
      * Parses an AT URI into its components.

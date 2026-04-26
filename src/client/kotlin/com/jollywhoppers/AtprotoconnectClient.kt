@@ -4,6 +4,7 @@ import com.jollywhoppers.atproto.client.ClientAtProtoClient
 import com.jollywhoppers.atproto.client.ClientAtProtoCommands
 import com.jollywhoppers.atproto.client.ClientSessionManager
 import com.jollywhoppers.atproto.oauth.OAuthManager
+import com.jollywhoppers.config.PreferencesManager
 import com.jollywhoppers.network.AtProtoPackets
 import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback
@@ -13,7 +14,7 @@ import net.minecraft.client.Minecraft
 import net.minecraft.network.chat.Component
 import org.slf4j.LoggerFactory
 
-object AtprotoconnectClient : ClientModInitializer {
+object socialsyncClient : ClientModInitializer {
 	private val logger = LoggerFactory.getLogger("atproto-connect-client")
 	
 	// Client-side AT Protocol components
@@ -88,17 +89,21 @@ object AtprotoconnectClient : ClientModInitializer {
 		ClientPlayNetworking.registerGlobalReceiver(AtProtoPackets.AuthenticateResponsePacket.TYPE) { packet, context ->
 			context.client().execute {
 				if (packet.success) {
-					Minecraft.getInstance().gui.chat.addMessage(
-						Component.literal("§a[SUCCESS] Server confirmed authentication!")
-							.append(Component.literal("\n§7${packet.message}"))
-							.append(Component.literal("\n§aYou can now sync your Minecraft data to AT Protocol!"))
-					)
+					if (PreferencesManager.get().showSyncNotifications) {
+						Minecraft.getInstance().gui.chat.addMessage(
+							Component.literal("§a[SUCCESS] Server confirmed authentication!")
+								.append(Component.literal("\n§7${packet.message}"))
+								.append(Component.literal("\n§aYou can now sync your Minecraft data to AT Protocol!"))
+						)
+					}
 					logger.info("Server confirmed authentication: ${packet.message}")
 				} else {
-					Minecraft.getInstance().gui.chat.addMessage(
-						Component.literal("§c[FAILED] Server rejected authentication")
-							.append(Component.literal("\n§7${packet.message}"))
-					)
+					if (PreferencesManager.get().showSyncNotifications) {
+						Minecraft.getInstance().gui.chat.addMessage(
+							Component.literal("§c[FAILED] Server rejected authentication")
+								.append(Component.literal("\n§7${packet.message}"))
+						)
+					}
 					logger.error("Server rejected authentication: ${packet.message}")
 				}
 			}

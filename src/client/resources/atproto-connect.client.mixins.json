@@ -3,7 +3,8 @@
 	"package": "com.jollywhoppers.mixin.client",
 	"compatibilityLevel": "JAVA_21",
 	"client": [
-		"ExampleClientMixin"
+		"ExampleClientMixin",
+		"DebugScreenMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

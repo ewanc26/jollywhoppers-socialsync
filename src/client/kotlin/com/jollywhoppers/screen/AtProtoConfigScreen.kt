@@ -1,6 +1,6 @@
 package com.jollywhoppers.screen
 
-import com.jollywhoppers.AtprotoconnectClient
+import com.jollywhoppers.socialsyncClient
 import com.jollywhoppers.atproto.oauth.OAuthManager
 import com.jollywhoppers.config.ClientPreferences
 import com.jollywhoppers.config.PreferencesManager
@@ -28,8 +28,8 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
     private val coroutineScope = CoroutineScope(Dispatchers.IO)
 
     // Session state
-    private val sessionManager = AtprotoconnectClient.sessionManager
-    private val oAuthManager = AtprotoconnectClient.oAuthManager
+    private val sessionManager = socialsyncClient.sessionManager
+    private val oAuthManager = socialsyncClient.oAuthManager
 
     // Auth fields (only shown when not logged in)
     private var handleField: EditBox? = null
@@ -40,12 +40,25 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
     // Frequency step values
     private val frequencySteps = intArrayOf(1, 5, 10, 15, 30, 60, 120, 240)
 
+    // Layout spacing (compact mode reduces vertical spacing)
+    private val isCompact: Boolean
+        get() = PreferencesManager.get().compactModMenuLayout
+
+    private val buttonHeight: Int
+        get() = if (isCompact) 18 else 20
+
+    private val rowSpacing: Int
+        get() = if (isCompact) 20 else 24
+
+    private val sectionSpacing: Int
+        get() = if (isCompact) 24 else 30
+
     override fun init() {
         super.init()
 
         val centerX = width / 2
         val prefs = PreferencesManager.get()
-        var y = 40
+        var y = if (isCompact) 30 else 40
 
         // ── Authentication ──────────────────────────────────────
         y = addAuthSection(centerX, y, prefs)
@@ -68,7 +81,7 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
                 Component.literal("Done"),
                 Button.OnPress { onClose() }
             )
-                .bounds(centerX - 155, height - 28, 150, 20)
+                .bounds(centerX - 155, height - 28, 150, buttonHeight)
                 .build()
         )
 
@@ -77,7 +90,7 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
                 Component.literal("Reset Defaults"),
                 Button.OnPress { onResetDefaults() }
             )
-                .bounds(centerX + 5, height - 28, 150, 20)
+                .bounds(centerX + 5, height - 28, 150, buttonHeight)
                 .build()
         )
     }
@@ -113,11 +126,11 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
                     Component.literal("Logout"),
                     Button.OnPress { onLogoutClicked() }
                 )
-                    .bounds(centerX - 75, y + 36, 150, 20)
+                    .bounds(centerX - 75, y + 36, 150, buttonHeight)
                     .build()
             )
 
-            y += 70
+            y += if (isCompact) 60 else 70
         } else {
             // Login fields
             handleField = EditBox(
@@ -174,7 +187,7 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
                 Component.literal("Stats: ${if (prefs.syncStatsEnabled) "§aOn" else "§cOff"}"),
                 Button.OnPress { toggleSyncConsent("stats") }
             )
-                .bounds(centerX - 155, y, 150, 20)
+                .bounds(centerX - 155, y, 150, buttonHeight)
                 .build()
         )
 
@@ -183,7 +196,7 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
                 Component.literal("Sessions: ${if (prefs.syncSessionsEnabled) "§aOn" else "§cOff"}"),
                 Button.OnPress { toggleSyncConsent("sessions") }
             )
-                .bounds(centerX + 5, y, 150, 20)
+                .bounds(centerX + 5, y, 150, buttonHeight)
                 .build()
         )
 
@@ -194,7 +207,7 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
                 Component.literal("Achievements: ${if (prefs.syncAchievementsEnabled) "§aOn" else "§cOff"}"),
                 Button.OnPress { toggleSyncConsent("achievements") }
             )
-                .bounds(centerX - 155, y, 150, 20)
+                .bounds(centerX - 155, y, 150, buttonHeight)
                 .build()
         )
 
@@ -203,7 +216,7 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
                 Component.literal("Server Status: ${if (prefs.syncServerStatusEnabled) "§aOn" else "§cOff"}"),
                 Button.OnPress { toggleSyncConsent("server-status") }
             )
-                .bounds(centerX + 5, y, 150, 20)
+                .bounds(centerX + 5, y, 150, buttonHeight)
                 .build()
         )
 
@@ -218,7 +231,7 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
                 Component.literal("Stats: ${prefs.statsSyncFrequency}m"),
                 Button.OnPress { cycleFrequency("stats") }
             )
-                .bounds(centerX - 155, y, 150, 20)
+                .bounds(centerX - 155, y, 150, buttonHeight)
                 .build()
         )
 
@@ -227,7 +240,7 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
                 Component.literal("Sessions: ${prefs.sessionSyncFrequency}m"),
                 Button.OnPress { cycleFrequency("sessions") }
             )
-                .bounds(centerX + 5, y, 150, 20)
+                .bounds(centerX + 5, y, 150, buttonHeight)
                 .build()
         )
 
@@ -238,7 +251,7 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
                 Component.literal("Achievements: ${prefs.achievementSyncFrequency}m"),
                 Button.OnPress { cycleFrequency("achievements") }
             )
-                .bounds(centerX - 155, y, 150, 20)
+                .bounds(centerX - 155, y, 150, buttonHeight)
                 .build()
         )
 
@@ -253,7 +266,7 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
                 Component.literal("Notifications: ${if (prefs.showSyncNotifications) "§aOn" else "§cOff"}"),
                 Button.OnPress { togglePreference("showSyncNotifications") }
             )
-                .bounds(centerX - 155, y, 150, 20)
+                .bounds(centerX - 155, y, 150, buttonHeight)
                 .build()
         )
 
@@ -262,7 +275,7 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
                 Component.literal("F3 Status: ${if (prefs.showStatusInF3) "§aOn" else "§cOff"}"),
                 Button.OnPress { togglePreference("showStatusInF3") }
             )
-                .bounds(centerX + 5, y, 150, 20)
+                .bounds(centerX + 5, y, 150, buttonHeight)
                 .build()
         )
 
@@ -273,7 +286,7 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
                 Component.literal("Compact Layout: ${if (prefs.compactModMenuLayout) "§aOn" else "§cOff"}"),
                 Button.OnPress { togglePreference("compactModMenuLayout") }
             )
-                .bounds(centerX - 155, y, 150, 20)
+                .bounds(centerX - 155, y, 150, buttonHeight)
                 .build()
         )
 
@@ -288,7 +301,7 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
                 Component.literal("Encrypt Storage: ${if (prefs.encryptedLocalStorage) "§aOn" else "§cOff"}"),
                 Button.OnPress { togglePreference("encryptedLocalStorage") }
             )
-                .bounds(centerX - 155, y, 150, 20)
+                .bounds(centerX - 155, y, 150, buttonHeight)
                 .build()
         )
 
@@ -297,7 +310,7 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
                 Component.literal("Clear on Logout: ${if (prefs.clearLocalCacheOnLogout) "§aOn" else "§cOff"}"),
                 Button.OnPress { togglePreference("clearLocalCacheOnLogout") }
             )
-                .bounds(centerX + 5, y, 150, 20)
+                .bounds(centerX + 5, y, 150, buttonHeight)
                 .build()
         )
 
