@@ -4,7 +4,16 @@ A Fabric mod for Minecraft 1.21.10 that bridges the game with the AT Protocol, e
 
 ## Project Status
 
-**This project is in active development and is NOT ready for production use.** Identity linking and authentication are now fully implemented with enterprise-grade security features. Stat syncing and other data collection features are planned but not yet implemented.
+**This project is in active development and is NOT ready for production use.**
+
+Core features are now implemented:
+- ✅ Identity linking and authentication (OAuth + app passwords)
+- ✅ Stat syncing to AT Protocol
+- ✅ Achievement syncing
+- ✅ Play session tracking
+- ✅ Server status snapshots
+- ✅ Sync consent controls
+- ✅ Enterprise-grade security (encryption, rate limiting, audit logging)
 
 ## Affiliation & Hosting
 
@@ -29,12 +38,15 @@ Players can link their Minecraft accounts to their AT Protocol identities and au
 **Basic Commands:**
 
 * **`/atproto link <handle or DID>`** - Link your Minecraft UUID to your AT Protocol identity (no login required)
-* **`/atproto login <handle> <app-password>`** - Authenticate to enable data syncing
+* **`/atproto login <handle> <app-password>`** - Authenticate with app password (fallback method)
 * **`/atproto logout`** - Remove authentication (keeps identity link)
 * **`/atproto unlink`** - Remove identity link and authentication
 * **`/atproto whoami`** - View your linked identity and auth status
 * **`/atproto status`** - Quick status check
 * **`/atproto whois <player or handle>`** - Look up another player's identity
+* **`/atproto sync`** - View your sync consent settings
+* **`/atproto sync stats <on|off>`** - Control whether your stats are synced
+* **`/atproto sync sessions <on|off>`** - Control whether your sessions are synced
 
 **Example Workflow:**
 
@@ -82,11 +94,25 @@ All passwords are handled securely - app passwords are never logged or stored (o
 ### Key Features
 
 * **Slingshot Integration**: Uses [Slingshot by Microcosm](https://slingshot.microcosm.blue) for fast, cached PDS resolution
-* **App Password Support**: Secure authentication using AT Protocol app passwords (never use your main password!)
+* **OAuth Support**: Browser-based authentication with DPoP and PKCE (recommended method)
+* **App Password Fallback**: Secure authentication using AT Protocol app passwords
 * **Automatic Token Refresh**: Access tokens are automatically refreshed before expiration
 * **Multi-PDS Support**: Works with any AT Protocol PDS, not just Bluesky
 * **Persistent Sessions**: Authentication survives server restarts
 * **Encrypted Storage**: Session data protected with AES-256-GCM encryption
+
+### Data Syncing
+
+The mod automatically syncs Minecraft data to AT Protocol:
+
+* **Player Stats**: Periodic snapshots of player statistics (kills, blocks mined, playtime, etc.)
+* **Achievements**: Records when players earn Minecraft advancements
+* **Play Sessions**: Tracks when players join and leave servers
+* **Server Status**: Periodic server information snapshots (online players, MOTD, etc.)
+
+All data syncing respects **sync consent** — players control whether their data is written to AT Protocol. Note that AT Protocol data is **always public** by design, so the sync consent controls whether data is written at all, not who can see it.
+
+Use `/atproto sync` to view and change your sync consent settings.
 
 ### Getting an App Password
 
@@ -320,13 +346,16 @@ All configuration files are stored in `config/atproto-connect/`:
 * [x] Build session management with automatic token refresh
 * [x] Add encryption for session storage
 * [x] Implement rate limiting and security auditing
-* [ ] Build data collection hooks for player statistics
-* [ ] Implement authenticated record creation (writing stats)
-* [ ] Add automatic stat syncing at configurable intervals
-* [ ] Add privacy controls and data filtering options
+* [x] Build data collection hooks for player statistics
+* [x] Implement authenticated record creation (writing stats)
+* [x] Add automatic stat syncing at configurable intervals
+* [x] Add sync consent controls (stats/sessions)
+* [x] Implement OAuth browser flow for better UX
+* [x] Add DPoP support
+* [x] Implement achievement syncing
+* [x] Implement play session tracking
+* [x] Implement server status snapshots
 * [ ] Create example AppView for displaying Minecraft data
-* [ ] Implement OAuth browser flow for better UX
-* [ ] Add DPoP support
 * [ ] Write comprehensive documentation
 * [ ] Add automated tests
 * [ ] Publish to Modrinth/CurseForge
