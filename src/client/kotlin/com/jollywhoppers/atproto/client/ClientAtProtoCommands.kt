@@ -63,18 +63,18 @@ class ClientAtProtoCommands(
                         .executes { context -> status(context) }
                 )
                 .then(
-                    ClientCommandManager.literal("privacy")
-                        .executes { context -> privacyStatus(context) }
+                    ClientCommandManager.literal("sync")
+                        .executes { context -> syncConsentStatus(context) }
                         .then(
                             ClientCommandManager.argument("setting", StringArgumentType.string())
                                 .suggests { _, builder ->
-                                    builder.suggest("stats public")
-                                    builder.suggest("stats private")
-                                    builder.suggest("sessions public")
-                                    builder.suggest("sessions private")
+                                    builder.suggest("stats on")
+                                    builder.suggest("stats off")
+                                    builder.suggest("sessions on")
+                                    builder.suggest("sessions off")
                                     builder.buildFuture()
                                 }
-                                .executes { context -> setPrivacy(context) }
+                                .executes { context -> setSyncConsent(context) }
                         )
                 )
                 .then(
@@ -270,52 +270,52 @@ class ClientAtProtoCommands(
     }
 
     /**
-     * Shows current privacy settings.
-     * Note: Privacy settings are stored server-side, so this shows the
+     * Shows current sync consent settings.
+     * Note: Sync consent settings are stored server-side, so this shows the
      * current session's auth type and reminds the user to use server commands.
      */
-    private fun privacyStatus(context: CommandContext<FabricClientCommandSource>): Int {
+    private fun syncConsentStatus(context: CommandContext<FabricClientCommandSource>): Int {
         val hasSession = sessionManager.hasSession()
         val isOAuth = sessionManager.isOAuthSession()
 
         context.source.sendFeedback(
-            Component.literal("§b━━━ Privacy Settings ━━━")
+            Component.literal("§b━━━ Sync Consent ━━━")
+                .append(Component.literal("\n§7Note: AT Protocol data is §falways public§7."))
+                .append(Component.literal("\n§7Sync consent controls whether data is written at all."))
                 .append(
                     if (hasSession) {
                         Component.literal("\n§7Auth type: §f${if (isOAuth) "OAuth" else "App Password"}")
                             .append(Component.literal("\n§7OAuth sessions use scoped permissions"))
-                            .append(Component.literal("\n§7for better privacy control"))
                     } else {
                         Component.literal("\n§cNot logged in")
                     }
                 )
                 .append(Component.literal("\n"))
-                .append(Component.literal("\n§eNote: Privacy settings for stats and sessions"))
-                .append(Component.literal("\n§eare managed on the server side:"))
-                .append(Component.literal("\n§f/atproto privacy"))
-                .append(Component.literal("\n§f/atproto privacy stats <public|private>"))
-                .append(Component.literal("\n§f/atproto privacy sessions <public|private>"))
+                .append(Component.literal("\n§eSync consent is managed on the server side:"))
+                .append(Component.literal("\n§f/atproto sync"))
+                .append(Component.literal("\n§f/atproto sync stats <on|off>"))
+                .append(Component.literal("\n§f/atproto sync sessions <on|off>"))
         )
         return 1
     }
 
     /**
-     * Sets a privacy setting (client-side convenience that sends to server).
+     * Sets a sync consent setting (client-side convenience that directs to server).
      */
-    private fun setPrivacy(context: CommandContext<FabricClientCommandSource>): Int {
+    private fun setSyncConsent(context: CommandContext<FabricClientCommandSource>): Int {
         val setting = StringArgumentType.getString(context, "setting").lowercase()
 
         // Parse the setting string
         val parts = setting.split(" ", limit = 2)
         if (parts.size != 2) {
             context.source.sendError(
-                Component.literal("§cInvalid format. Use: stats <public|private> or sessions <public|private>")
+                Component.literal("§cInvalid format. Use: stats <on|off> or sessions <on|off>")
             )
             return 0
         }
 
         val category = parts[0]
-        val visibility = parts[1]
+        val enabled = parts[1]
 
         if (category !in listOf("stats", "sessions")) {
             context.source.sendError(
@@ -324,18 +324,18 @@ class ClientAtProtoCommands(
             return 0
         }
 
-        if (visibility !in listOf("public", "private")) {
+        if (enabled !in listOf("on", "off")) {
             context.source.sendError(
-                Component.literal("§cUnknown visibility: $visibility. Use: public or private")
+                Component.literal("§cUnknown value: $enabled. Use: on or off")
             )
             return 0
         }
 
-        // Privacy settings are server-side, so we inform the user
+        // Sync consent is server-side, so we inform the user
         context.source.sendFeedback(
-            Component.literal("§ePrivacy settings are managed on the server side.")
+            Component.literal("§eSync consent is managed on the server side.")
                 .append(Component.literal("\n§7Run this command on the server instead:"))
-                .append(Component.literal("\n§f/atproto privacy $category $visibility"))
+                .append(Component.literal("\n§f/atproto sync $category $enabled"))
         )
         return 1
     }

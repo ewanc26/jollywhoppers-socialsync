@@ -41,8 +41,10 @@ class PlayerIdentityStore(private val storageFile: Path) {
         val handle: String,
         val linkedAt: Long = System.currentTimeMillis(),
         val lastVerified: Long = System.currentTimeMillis(),
-        val publicStats: Boolean = true,
-        val publicSessions: Boolean = true,
+        /** Whether the player consents to syncing stats to AT Protocol. Default: true. */
+        val syncStats: Boolean = true,
+        /** Whether the player consents to syncing play sessions to AT Protocol. Default: true. */
+        val syncSessions: Boolean = true,
     )
 
     @Serializable
@@ -145,29 +147,32 @@ class PlayerIdentityStore(private val storageFile: Path) {
     }
 
     /**
-     * Updates privacy settings for a player's identity.
+     * Updates sync consent settings for a player's identity.
+     * These are local-only controls — AT Protocol data is always public,
+     * so the real privacy is not writing data the user doesn't want published.
      * @return The updated identity, or null if the player is not linked
      */
-    fun updatePrivacy(uuid: UUID, publicStats: Boolean? = null, publicSessions: Boolean? = null): PlayerIdentity? {
+    fun updateSyncConsent(uuid: UUID, syncStats: Boolean? = null, syncSessions: Boolean? = null): PlayerIdentity? {
         val identity = identities[uuid] ?: return null
         val updated = identity.copy(
-            publicStats = publicStats ?: identity.publicStats,
-            publicSessions = publicSessions ?: identity.publicSessions,
+            syncStats = syncStats ?: identity.syncStats,
+            syncSessions = syncSessions ?: identity.syncSessions,
             lastVerified = System.currentTimeMillis(),
         )
         identities[uuid] = updated
         save()
-        logger.info("Updated privacy settings for $uuid: publicStats=${updated.publicStats}, publicSessions=${updated.publicSessions}")
+        logger.info("Updated sync consent for $uuid: syncStats=${updated.syncStats}, syncSessions=${updated.syncSessions}")
         return updated
     }
 
     /**
-     * Gets the privacy settings for a player.
+     * Gets the sync consent settings for a player.
      * Returns null if the player is not linked.
+     * Pair(syncStats, syncSessions)
      */
-    fun getPrivacySettings(uuid: UUID): Pair<Boolean, Boolean>? {
+    fun getSyncConsent(uuid: UUID): Pair<Boolean, Boolean>? {
         val identity = identities[uuid] ?: return null
-        return Pair(identity.publicStats, identity.publicSessions)
+        return Pair(identity.syncStats, identity.syncSessions)
     }
 
     /**

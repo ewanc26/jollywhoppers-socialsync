@@ -17,8 +17,11 @@ import java.util.UUID
  *
  * When a player links their identity, this service creates or updates their
  * `com.jollywhoppers.minecraft.player.profile` record with the `literal:self` rkey.
- * The profile record includes privacy settings (publicStats, publicSessions)
- * that control what data is synced to AT Protocol.
+ *
+ * Note: AT Protocol data is always public. Sync consent (syncStats, syncSessions)
+ * is stored locally in PlayerIdentityStore and controls whether data is written
+ * at all — it is NOT included in the profile record since it would give a false
+ * sense of privacy control.
  */
 class PlayerProfileService(
     private val recordManager: RecordManager,
@@ -72,8 +75,6 @@ class PlayerProfileService(
                         serverName = serverName,
                         serverAddress = serverAddress,
                     ),
-                    publicStats = identity.publicStats,
-                    publicSessions = identity.publicSessions,
                     createdAt = Instant.ofEpochMilli(identity.linkedAt).toString(),
                     updatedAt = Instant.now().toString(),
                 )
@@ -114,8 +115,6 @@ class PlayerProfileService(
         @SerialName("\$type") val type: String = COLLECTION_ID,
         val player: PlayerReference,
         val primaryServer: ServerReference? = null,
-        val publicStats: Boolean = true,
-        val publicSessions: Boolean = true,
         val createdAt: String,
         val updatedAt: String,
     )

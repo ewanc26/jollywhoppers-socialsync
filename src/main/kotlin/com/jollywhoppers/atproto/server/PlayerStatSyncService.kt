@@ -115,10 +115,10 @@ class PlayerStatSyncService(
             return null
         }
 
-        // Check privacy setting before syncing stats
-        val privacySettings = identityStore.getPrivacySettings(player.uuid)
-        if (privacySettings != null && !privacySettings.first) {
-            logger.debug("Skipping stat sync for ${player.name.string}: publicStats is disabled")
+        // Check sync consent before syncing stats
+        val syncConsent = identityStore.getSyncConsent(player.uuid)
+        if (syncConsent != null && !syncConsent.first) {
+            logger.debug("Skipping stat sync for ${player.name.string}: syncStats consent is disabled")
             return null
         }
 
