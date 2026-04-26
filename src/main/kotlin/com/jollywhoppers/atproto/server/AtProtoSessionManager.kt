@@ -78,42 +78,6 @@ class AtProtoSessionManager(
     }
 
     /**
-     * Creates or updates a session for a player.
-     * @deprecated Use storeVerifiedSession for client-authenticated sessions
-     */
-    @Deprecated("Use storeVerifiedSession for client-authenticated sessions")
-    suspend fun createSession(
-        uuid: UUID,
-        identifier: String,
-        password: String
-    ): Result<PlayerSession> = runCatching {
-        logger.info("Creating session for player $uuid with identifier ${SecurityUtils.sanitizeForLog(identifier)}")
-        
-        // Create the session via AT Protocol
-        val sessionResponse = client.createSession(identifier, password).getOrThrow()
-        
-        // Resolve to get PDS URL
-        val (did, handle, pdsUrl) = client.resolveIdentifier(sessionResponse.did).getOrThrow()
-        
-        val session = PlayerSession(
-            uuid = uuid.toString(),
-            did = did,
-            handle = handle,
-            pdsUrl = pdsUrl,
-            accessJwt = sessionResponse.accessJwt,
-            refreshJwt = sessionResponse.refreshJwt,
-            createdAt = System.currentTimeMillis(),
-            lastRefreshed = System.currentTimeMillis()
-        )
-        
-        sessions[uuid] = session
-        save()
-        
-        logger.info("Session created successfully for $handle")
-        session
-    }
-    
-    /**
      * Stores a verified session that was authenticated client-side.
      * This is the preferred method for storing sessions.
      * @param authType "oauth" or "app_password" (default: "app_password")

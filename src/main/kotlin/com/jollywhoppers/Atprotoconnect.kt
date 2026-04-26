@@ -235,7 +235,7 @@ object Atprotoconnect : ModInitializer {
         // Cleanup rate limiter every hour
         scheduler.scheduleAtFixedRate({
             try {
-                commands.cleanup()
+                // Rate limiter cleanup removed (server-side login deprecated)
                 logger.debug("Rate limiter cleanup completed")
             } catch (e: Exception) {
                 logger.error("Failed to cleanup rate limiter", e)
