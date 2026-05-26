@@ -5,6 +5,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 import kotlinx.serialization.serializer
 import org.slf4j.LoggerFactory
+import java.util.UUID
 
 /**
  * Comprehensive record management for AT Protocol repositories.

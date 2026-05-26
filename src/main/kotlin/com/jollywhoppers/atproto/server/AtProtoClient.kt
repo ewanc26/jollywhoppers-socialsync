@@ -411,9 +411,7 @@ class AtProtoClient(
     }
 
     private fun encodeURIComponent(value: String): String {
-        return URI(null, null, null, -1, null, null, null)
-            .resolve(value)
-            .rawSchemeSpecificPart
+        return java.net.URLEncoder.encode(value, Charsets.UTF_8)
             .replace("+", "%20")
     }
 

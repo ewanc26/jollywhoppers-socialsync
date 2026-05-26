@@ -1,9 +1,12 @@
 package com.jollywhoppers.atproto.server
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 import org.slf4j.LoggerFactory
 import java.util.*
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * AppView service for displaying Minecraft data from AT Protocol records.
@@ -29,11 +32,11 @@ class AppViewService(
         ignoreUnknownKeys = true
     }
 
-    // In-memory storage for indexed data (in production, use a database)
-    private val playerProfiles = mutableMapOf<String, PlayerProfileView>()
-    private val playerStats = mutableMapOf<String, MutableList<PlayerStatsView>>()
-    private val achievements = mutableMapOf<String, MutableList<AchievementView>>()
-    private val leaderboards = mutableMapOf<String, MutableList<LeaderboardEntryView>>()
+    // Thread-safe storage for indexed data (in production, use a database)
+    private val playerProfiles = ConcurrentHashMap<String, PlayerProfileView>()
+    private val playerStats = ConcurrentHashMap<String, CopyOnWriteArrayList<PlayerStatsView>>()
+    private val achievements = ConcurrentHashMap<String, CopyOnWriteArrayList<AchievementView>>()
+    private val leaderboards = ConcurrentHashMap<String, CopyOnWriteArrayList<LeaderboardEntryView>>()
 
     // ============================================================================
     // INDEXING OPERATIONS
@@ -86,7 +89,7 @@ class AppViewService(
             syncedAt = stats.syncedAt
         )
         
-        playerStats.getOrPut(playerUuid) { mutableListOf() }.add(statsView)
+        playerStats.getOrPut(playerUuid) { CopyOnWriteArrayList() }.add(statsView)
         
         // Update leaderboards
         updateLeaderboards(statsView)
@@ -117,7 +120,7 @@ class AppViewService(
             isChallenge = achievement.isChallenge
         )
         
-        achievements.getOrPut(playerUuid) { mutableListOf() }.add(achievementView)
+        achievements.getOrPut(playerUuid) { CopyOnWriteArrayList() }.add(achievementView)
         
         logger.info("Indexed achievement for player $playerUuid: ${achievement.achievementName}")
     }
@@ -259,7 +262,7 @@ class AppViewService(
                 recordedAt = stats.syncedAt
             )
             
-            val leaderboard = leaderboards.getOrPut(leaderboardKey) { mutableListOf() }
+            val leaderboard = leaderboards.getOrPut(leaderboardKey) { CopyOnWriteArrayList() }
             
             // Remove old entry if exists and add new one
             leaderboard.removeAll { it.playerUuid == stats.playerUuid }
@@ -273,7 +276,7 @@ class AppViewService(
 
     @Serializable
     data class PlayerProfileRecord(
-        val `$type`: String,
+        @SerialName("\$type") val type: String,
         val player: PlayerRef,
         val displayName: String?,
         val bio: String?,
@@ -298,7 +301,7 @@ class AppViewService(
 
     @Serializable
     data class PlayerStatsRecord(
-        val `$type`: String,
+        @SerialName("\$type") val type: String,
         val player: PlayerRef,
         val server: ServerRef,
         val statistics: List<Statistic>,
@@ -317,7 +320,7 @@ class AppViewService(
 
     @Serializable
     data class AchievementRecord(
-        val `$type`: String,
+        @SerialName("\$type") val type: String,
         val player: PlayerRef,
         val server: ServerRef,
         val achievementId: String,

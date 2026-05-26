@@ -565,19 +565,4 @@ class AtProtoCommands(
             }
         }
     }
-    
-    /**
-     * Builds a deterministic server ID from the server directory path.
-     * Builds a deterministic server ID from the server directory path.
-     * Matches the implementation in PlayerStatSyncService.
-     */
-    private fun buildServerId(server: net.minecraft.server.MinecraftServer): String {
-        val serverPath = server.serverDirectory
-            .toAbsolutePath()
-            .normalize()
-            .toString()
-        val payload = "socialsync:$serverPath"
-        val digest = java.security.MessageDigest.getInstance("SHA-256").digest(payload.toByteArray(Charsets.UTF_8))
-        return digest.joinToString("") { byte -> "%02x".format(byte) }
-    }
 }
