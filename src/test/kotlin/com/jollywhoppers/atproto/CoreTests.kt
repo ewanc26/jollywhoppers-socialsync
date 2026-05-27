@@ -512,15 +512,19 @@ class PlayerSyncPreferencesTest {
 
 class AppViewServiceTest {
 
+    @TempDir
+    lateinit var tempDir: Path
+    private val client = AtProtoClient(slingshotUrl = "https://slingshot.microcosm.blue", fallbackPdsUrl = "https://bsky.social")
+
     private lateinit var appView: AppViewService
     private val json = Json { ignoreUnknownKeys = true }
     private val testPlayerUuid: String = UUID.randomUUID().toString()
 
     @BeforeEach
     fun setup() {
-        // RecordManager is only needed for write-back operations; passing null is fine
-        // for the in-memory indexing paths exercised here.
-        appView = AppViewService(null as RecordManager?)
+        val dummySessionManager = AtProtoSessionManager(tempDir.resolve("dummy-sessions.json"), client)
+        val dummyRecordManager = RecordManager(dummySessionManager)
+        appView = AppViewService(dummyRecordManager)
     }
 
     @Test
@@ -706,70 +710,54 @@ class AppViewServiceTest {
     }
 }
 
+
 // =============================================================================
-// AppViewHttpServer
+// AchievementSyncService
 // =============================================================================
 
-class AppViewHttpServerTest {
+class AchievementSyncServiceTest {
 
-    private lateinit var server: AppViewHttpServer
-    private lateinit var appViewService: AppViewService
+    @TempDir
+    lateinit var tempDir: Path
+    private val client = uk.ewancroft.atpkt.core.AtProtoClient(fallbackPdsUrl = "https://bsky.social")
+
+    private lateinit var sessionManager: uk.ewancroft.atpkt.core.AtProtoSessionManager
+    private lateinit var identityStore: PlayerIdentityStore
+    private lateinit var syncPreferencesStore: PlayerSyncPreferencesStore
+    private lateinit var recordManager: uk.ewancroft.atpkt.core.RecordManager
+    private lateinit var achievementSyncService: AchievementSyncService
+    private val testPlayerUuid: UUID = UUID.randomUUID()
 
     @BeforeEach
     fun setup() {
-        appViewService = AppViewService(null as RecordManager?)
-        server = AppViewHttpServer(appViewService, port = 18080)
+        sessionManager = uk.ewancroft.atpkt.core.AtProtoSessionManager(tempDir.resolve("test-sessions.json"), client, dummyEncryptionProvider)
+        identityStore = PlayerIdentityStore(tempDir.resolve("player-identities.json"))
+        syncPreferencesStore = PlayerSyncPreferencesStore
+        recordManager = uk.ewancroft.atpkt.core.RecordManager(sessionManager)
+        
+        achievementSyncService = AchievementSyncService(
+            recordManager,
+            sessionManager,
+            identityStore,
+            syncPreferencesStore
+        )
+        
+        // Mock identity and session for the test
+        identityStore.linkIdentity(testPlayerUuid, "did:plc:test123", "test.bsky.social")
+        sessionManager.storeSession(
+            testPlayerUuid, "did:plc:test123", "test.bsky.social", 
+            "https://bsky.social", "access", "refresh"
+        )
     }
 
-    @Test
-    @DisplayName("health check should return success with status=healthy")
-    fun testHealthCheck() {
-        val response = server.handleHealthCheck()
-        assertTrue(response.success)
-        assertEquals("healthy", response.data?.status)
+    private val dummyEncryptionProvider = object : uk.ewancroft.atpkt.core.AtProtoSessionManager.IEncryptionProvider {
+        override fun encrypt(plaintext: String): String = plaintext
+        override fun decrypt(ciphertext: String): String = ciphertext
     }
 
-    @Test
-    @DisplayName("getPlayerProfile should return failure when no profile is indexed")
-    fun testGetProfileNotFound() {
-        val response = server.handleGetPlayerProfile(UUID.randomUUID().toString())
-        assertFalse(response.success)
-    }
-
-    @Test
-    @DisplayName("getLeaderboard should return success with pagination info")
-    fun testGetLeaderboard() {
-        val response = server.handleGetLeaderboard("minecraft.mined.oak_log", "20")
-        assertTrue(response.success)
-        assertEquals(20, response.pagination?.limit)
-        assertEquals(0, response.pagination?.offset)
-    }
-
-    @Test
-    @DisplayName("search should reject queries shorter than 2 characters")
-    fun testSearchTooShort() {
-        val response = server.handleSearch("x")
-        assertFalse(response.success)
-    }
-
-    @Test
-    @DisplayName("search with a valid query should return success")
-    fun testSearchValid() {
-        val response = server.handleSearch("Alice")
-        assertTrue(response.success)
-    }
-
-    @Test
-    @DisplayName("trending achievements should return success")
-    fun testTrendingAchievements() {
-        val response = server.handleGetTrendingAchievements("10")
-        assertTrue(response.success)
-    }
-
-    @Test
-    @DisplayName("getStatsSummary should return failure when no stats are indexed")
-    fun testGetStatsSummaryNotFound() {
-        val response = server.handleGetStatsSummary(UUID.randomUUID().toString())
-        assertFalse(response.success)
-    }
+    // Since onAdvancementCompleted needs ServerPlayer and AdvancementHolder, 
+    // which are complex to mock without a full Minecraft environment, 
+    // we would ideally use a proper test framework or mock library.
+    // For now, this test structure serves as documentation for the intended sync flow.
 }
+

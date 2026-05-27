@@ -13,6 +13,9 @@ import org.slf4j.LoggerFactory
 import java.time.Instant
 import java.time.Duration
 import java.util.UUID
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.jsonObject
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -33,8 +36,8 @@ import java.util.concurrent.ConcurrentHashMap
  * - Player reconnecting quickly: each join/leave is a separate session
  */
 class PlayerSessionSyncService(
-    private val recordManager: RecordManager,
-    private val sessionManager: AtProtoSessionManager,
+    private val recordManager: uk.ewancroft.atpkt.core.RecordManager,
+    private val sessionManager: uk.ewancroft.atpkt.core.AtProtoSessionManager,
     private val identityStore: PlayerIdentityStore,
     private val syncPreferencesStore: PlayerSyncPreferencesStore,
 ) {
@@ -97,8 +100,8 @@ class PlayerSessionSyncService(
         }
 
         // Check if linked and authenticated
-        if (!identityStore.isLinked(uuid) || !sessionManager.hasSession(uuid)) {
-            logger.debug("Skipping session record for $uuid: not linked or not authenticated")
+        if (!identityStore.isLinked(uuid)) {
+            logger.debug("Skipping session record for $uuid: not linked")
             return
         }
 
@@ -116,6 +119,10 @@ class PlayerSessionSyncService(
         val playerName = identity?.handle ?: uuid.toString().take(8)
 
         coroutineScope.launch {
+            if (!sessionManager.getSession(uuid).isSuccess) {
+                logger.debug("Skipping session record for $uuid: not authenticated")
+                return@launch
+            }
             try {
                 val record = MinecraftPlayerSessionRecord(
                     player = PlayerReference(
@@ -133,10 +140,10 @@ class PlayerSessionSyncService(
                     quitReason = normalizeQuitReason(quitReason),
                 )
 
-                recordManager.createTypedRecord(
+                recordManager.createRecord(
                     playerUuid = uuid,
                     collection = COLLECTION_ID,
-                    record = record,
+                    record = Json.encodeToJsonElement(record).jsonObject,
                 ).getOrThrow()
 
                 logger.info("Synced session record for $playerName ($uuid): ${durationMinutes}min")

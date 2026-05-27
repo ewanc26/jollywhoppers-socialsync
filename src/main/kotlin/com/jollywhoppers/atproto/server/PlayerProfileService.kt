@@ -23,9 +23,24 @@ import java.util.UUID
  * it is NOT included in the profile record since it would give a false sense
  * of privacy control.
  */
+import uk.ewancroft.atpkt.generated.Profile
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+
+/**
+ * Manages the player.profile record for linked players.
+ *
+ * When a player links their identity, this service creates or updates their
+ * `com.jollywhoppers.minecraft.player.profile` record with the `literal:self` rkey.
+ *
+ * Note: AT Protocol data is always public. Sync consent is stored locally
+ * in PlayerSyncPreferencesStore and controls whether data is written at all —
+ * it is NOT included in the profile record since it would give a false sense
+ * of privacy control.
+ */
 class PlayerProfileService(
-    private val recordManager: RecordManager,
-    private val sessionManager: AtProtoSessionManager,
+    private val recordManager: uk.ewancroft.atpkt.core.RecordManager,
+    private val sessionManager: uk.ewancroft.atpkt.core.AtProtoSessionManager,
     private val identityStore: PlayerIdentityStore,
     private val syncPreferencesStore: PlayerSyncPreferencesStore,
 ) {
@@ -61,7 +76,7 @@ class PlayerProfileService(
                     return@launch
                 }
 
-                if (!sessionManager.hasSession(playerUuid)) {
+                if (!sessionManager.getSession(playerUuid).isSuccess) {
                     logger.warn("Cannot sync profile: player $playerUuid has no active session")
                     return@launch
                 }
@@ -76,25 +91,21 @@ class PlayerProfileService(
                     return@launch
                 }
 
-                val profile = MinecraftPlayerProfileRecord(
-                    player = PlayerReference(
-                        uuid = identity.uuid,
-                        username = identity.handle,
-                    ),
-                    primaryServer = ServerReference(
-                        serverId = serverId,
-                        serverName = serverName,
-                        serverAddress = serverAddress,
-                    ),
+                val profile = Profile(
+                    player = buildJsonObject { put("uuid", identity.uuid); put("username", identity.handle) },
+                    displayName = identity.handle,
+                    bio = "Minecraft player",
+                    primaryServer = buildJsonObject { put("serverId", serverId); put("serverName", serverName) },
+                    favoriteGameMode = "survival",
                     createdAt = Instant.ofEpochMilli(identity.linkedAt).toString(),
                     updatedAt = Instant.now().toString(),
                 )
 
-                recordManager.putTypedRecord(
+                recordManager.createRecord(
                     playerUuid = playerUuid,
                     collection = COLLECTION_ID,
-                    rkey = RKEY,
-                    record = profile,
+                    record = profile.let { json.encodeToJsonElement(Profile.serializer(), it) },
+                    validate = true
                 ).getOrThrow()
 
                 logger.info("Synced player.profile for ${identity.handle} ($playerUuid)")
@@ -107,26 +118,4 @@ class PlayerProfileService(
     fun shutdown() {
         coroutineScope.cancel()
     }
-
-    @Serializable
-    data class PlayerReference(
-        val uuid: String,
-        val username: String,
-    )
-
-    @Serializable
-    data class ServerReference(
-        val serverId: String,
-        val serverName: String,
-        val serverAddress: String? = null,
-    )
-
-    @Serializable
-    data class MinecraftPlayerProfileRecord(
-        @SerialName("\$type") val type: String = COLLECTION_ID,
-        val player: PlayerReference,
-        val primaryServer: ServerReference? = null,
-        val createdAt: String,
-        val updatedAt: String,
-    )
 }

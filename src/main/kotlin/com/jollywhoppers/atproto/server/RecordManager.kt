@@ -6,6 +6,7 @@ import kotlinx.serialization.json.*
 import kotlinx.serialization.serializer
 import org.slf4j.LoggerFactory
 import java.util.UUID
+import uk.ewancroft.atpkt.core.Tid
 
 /**
  * Comprehensive record management for AT Protocol repositories.
