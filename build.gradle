@@ -52,6 +52,13 @@ dependencies {
 	
 	// Kotlinx serialization
 	implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3"
+
+	// atpkt library
+	implementation project(':atpkt')
+
+	// Testing
+	testImplementation "org.junit.jupiter:junit-jupiter:5.10.0"
+	testImplementation "org.jetbrains.kotlin:kotlin-test:2.0.0"
 }
 
 processResources {
@@ -64,6 +71,10 @@ processResources {
 
 tasks.withType(JavaCompile).configureEach {
 	it.options.release = 21
+}
+
+test {
+	useJUnitPlatform()
 }
 
 tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).all {

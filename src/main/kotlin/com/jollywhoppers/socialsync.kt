@@ -105,11 +105,15 @@ object socialsync : ModInitializer {
             syncPreferencesStore.migrateFromIdentityStore(identityStore)
             logger.info("Legacy sync consent migration completed")
 
+            // Prepare shared SDK-compatible services
+            val recordManagerCasted = recordManager as uk.ewancroft.atpkt.core.RecordManager
+            val sessionManagerCasted = sessionManager as uk.ewancroft.atpkt.core.AtProtoSessionManager
+
             // Initialize automatic Minecraft stat syncing
             val statSyncStatePath = configDir.resolve("minecraft-stat-sync-state.json")
             statSyncService = PlayerStatSyncService(
-                recordManager = recordManager,
-                sessionManager = sessionManager,
+                recordManager = recordManagerCasted,
+                sessionManager = sessionManagerCasted,
                 identityStore = identityStore,
                 syncPreferencesStore = syncPreferencesStore,
                 storageFile = statSyncStatePath
@@ -118,17 +122,16 @@ object socialsync : ModInitializer {
 
             // Initialize player profile service
             profileService = PlayerProfileService(
-                recordManager = recordManager,
-                sessionManager = sessionManager,
+                recordManager = recordManagerCasted,
+                sessionManager = sessionManagerCasted,
                 identityStore = identityStore,
                 syncPreferencesStore = syncPreferencesStore,
             )
-            logger.info("Player profile service initialized")
 
             // Initialize achievement sync service
             achievementSyncService = AchievementSyncService(
-                recordManager = recordManager,
-                sessionManager = sessionManager,
+                recordManager = recordManagerCasted,
+                sessionManager = sessionManagerCasted,
                 identityStore = identityStore,
                 syncPreferencesStore = syncPreferencesStore,
             )
@@ -137,8 +140,8 @@ object socialsync : ModInitializer {
 
             // Initialize session sync service
             sessionSyncService = PlayerSessionSyncService(
-                recordManager = recordManager,
-                sessionManager = sessionManager,
+                recordManager = recordManagerCasted,
+                sessionManager = sessionManagerCasted,
                 identityStore = identityStore,
                 syncPreferencesStore = syncPreferencesStore,
             )

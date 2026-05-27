@@ -24,7 +24,9 @@ class DebugScreenMixin {
         val sessionManager = socialsyncClient.sessionManager
         if (sessionManager.hasSession()) {
             val session = try {
-                sessionManager.getSession().getOrNull()
+                // Wrap in runBlocking for a synchronous call in UI context, or use a scope
+                // Since this is called from F3 debug screen rendering, keep it quick
+                kotlinx.coroutines.runBlocking { sessionManager.getSession().getOrNull() }
             } catch (_: Exception) {
                 null
             }
