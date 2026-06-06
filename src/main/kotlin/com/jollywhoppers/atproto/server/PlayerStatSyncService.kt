@@ -13,7 +13,7 @@ import kotlinx.coroutines.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
-import uk.ewancroft.atpkt.generated.Stats
+import uk.ewancroft.atpkt.generated.com.jollywhoppers.minecraft.player.Stats
 
 /**
  * Periodically snapshots online players' stats and syncs them to AT Protocol.
