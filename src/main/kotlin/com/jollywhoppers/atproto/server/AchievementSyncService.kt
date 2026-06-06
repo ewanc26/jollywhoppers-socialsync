@@ -8,7 +8,7 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
-import uk.ewancroft.atpkt.generated.Achievement
+import uk.ewancroft.atpkt.generated.com.jollywhoppers.minecraft.Achievement
 
 /**
  * Syncs Minecraft advancements (achievements) to AT Protocol records.

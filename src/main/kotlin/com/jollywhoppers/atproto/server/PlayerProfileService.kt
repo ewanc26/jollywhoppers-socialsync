@@ -23,7 +23,7 @@ import java.util.UUID
  * it is NOT included in the profile record since it would give a false sense
  * of privacy control.
  */
-import uk.ewancroft.atpkt.generated.Profile
+import uk.ewancroft.atpkt.generated.com.jollywhoppers.minecraft.player.Profile
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
