@@ -93,9 +93,9 @@ object socialsync : ModInitializer {
             sessionManager = AtProtoSessionManager(sessionStorePath, atProtoClient)
             logger.info("Session manager initialized with encryption at: $sessionStorePath")
 
-            // Initialize record manager
-            recordManager = RecordManager(sessionManager)
-            logger.info("Record manager initialized")
+			// Initialize record manager (uses kikin81 RepoService)
+			recordManager = RecordManager(atProtoClient.xrpcClient, atProtoClient.json, sessionManager)
+			logger.info("Record manager initialized")
 
             // Initialize sync preferences store (single source of truth for consent)
             syncPreferencesStore = PlayerSyncPreferencesStore

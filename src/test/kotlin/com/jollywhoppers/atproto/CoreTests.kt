@@ -2,6 +2,10 @@ package com.jollywhoppers.atproto
 
 import com.jollywhoppers.atproto.server.*
 import com.jollywhoppers.security.*
+import io.github.kikin81.atproto.runtime.NoAuth
+import io.github.kikin81.atproto.runtime.XrpcClient
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.cio.CIO
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.*
 import org.junit.jupiter.api.Test
@@ -522,8 +526,10 @@ class AppViewServiceTest {
 
     @BeforeEach
     fun setup() {
+        val testHttpClient = HttpClient(CIO) { expectSuccess = false }
+        val testXrpcClient = XrpcClient(httpClient = testHttpClient, authProvider = NoAuth)
         val dummySessionManager = AtProtoSessionManager(tempDir.resolve("dummy-sessions.json"), client)
-        val dummyRecordManager = RecordManager(dummySessionManager)
+        val dummyRecordManager = RecordManager(testXrpcClient, json, dummySessionManager)
         appView = AppViewService(dummyRecordManager)
     }
 
@@ -730,10 +736,12 @@ class AchievementSyncServiceTest {
 
     @BeforeEach
     fun setup() {
+        val testHttpClient = HttpClient(CIO) { expectSuccess = false }
+        val testXrpcClient = XrpcClient(httpClient = testHttpClient, authProvider = NoAuth)
         sessionManager = AtProtoSessionManager(tempDir.resolve("test-sessions.json"), client)
         identityStore = PlayerIdentityStore(tempDir.resolve("player-identities.json"))
         syncPreferencesStore = PlayerSyncPreferencesStore
-        recordManager = RecordManager(sessionManager)
+        recordManager = RecordManager(testXrpcClient, Json { ignoreUnknownKeys = true }, sessionManager)
         
         achievementSyncService = AchievementSyncService(
             recordManager,
