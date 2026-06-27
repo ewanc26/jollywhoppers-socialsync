@@ -20,9 +20,8 @@ import java.security.spec.X509EncodedKeySpec
 import java.time.Duration
 import java.util.UUID
 
+@Suppress("UNUSED_PARAMETER")
 class OAuthManager @JvmOverloads constructor(
-    @Deprecated("No longer used - DiscoveryChain replaces ClientAtProtoClient for identity resolution")
-    @Suppress("UNUSED_PARAMETER")
     unused: Any? = null,
 ) {
     private val logger = LoggerFactory.getLogger("atproto-connect:oauth")

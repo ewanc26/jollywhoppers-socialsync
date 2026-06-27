@@ -527,7 +527,7 @@ class AppViewServiceTest {
     @BeforeEach
     fun setup() {
         val testHttpClient = HttpClient(CIO) { expectSuccess = false }
-        val testXrpcClient = XrpcClient(httpClient = testHttpClient, authProvider = NoAuth)
+        val testXrpcClient = XrpcClient(baseUrl = "https://bsky.social", httpClient = testHttpClient, authProvider = NoAuth)
         val dummySessionManager = AtProtoSessionManager(tempDir.resolve("dummy-sessions.json"), client)
         val dummyRecordManager = RecordManager(testXrpcClient, json, dummySessionManager)
         appView = AppViewService(dummyRecordManager)
@@ -737,7 +737,7 @@ class AchievementSyncServiceTest {
     @BeforeEach
     fun setup() {
         val testHttpClient = HttpClient(CIO) { expectSuccess = false }
-        val testXrpcClient = XrpcClient(httpClient = testHttpClient, authProvider = NoAuth)
+        val testXrpcClient = XrpcClient(baseUrl = "https://bsky.social", httpClient = testHttpClient, authProvider = NoAuth)
         sessionManager = AtProtoSessionManager(tempDir.resolve("test-sessions.json"), client)
         identityStore = PlayerIdentityStore(tempDir.resolve("player-identities.json"))
         syncPreferencesStore = PlayerSyncPreferencesStore
