@@ -23,7 +23,7 @@ import java.util.UUID
  * it is NOT included in the profile record since it would give a false sense
  * of privacy control.
  */
-import uk.ewancroft.atpkt.generated.com.jollywhoppers.minecraft.player.Profile
+import com.jollywhoppers.atproto.server.model.Profile
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
@@ -39,8 +39,8 @@ import kotlinx.serialization.json.put
  * of privacy control.
  */
 class PlayerProfileService(
-    private val recordManager: uk.ewancroft.atpkt.core.RecordManager,
-    private val sessionManager: uk.ewancroft.atpkt.core.AtProtoSessionManager,
+    private val recordManager: RecordManager,
+    private val sessionManager: AtProtoSessionManager,
     private val identityStore: PlayerIdentityStore,
     private val syncPreferencesStore: PlayerSyncPreferencesStore,
 ) {

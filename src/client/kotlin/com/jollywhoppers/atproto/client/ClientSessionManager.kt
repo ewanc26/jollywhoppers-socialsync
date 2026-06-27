@@ -1,8 +1,16 @@
 package com.jollywhoppers.atproto.client
 
-import com.jollywhoppers.atproto.oauth.OAuthSession
 import com.jollywhoppers.atproto.oauth.DpopProof
+import com.jollywhoppers.atproto.oauth.OAuthSession
 import com.jollywhoppers.config.PreferencesManager
+import io.github.kikin81.atproto.oauth.DpopAuthProvider
+import io.github.kikin81.atproto.oauth.DpopSigner
+import io.github.kikin81.atproto.oauth.OAuthSessionStore
+import io.github.kikin81.atproto.runtime.XrpcClient
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.cio.CIO
+import io.ktor.client.plugins.HttpTimeout
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
@@ -11,22 +19,8 @@ import org.slf4j.LoggerFactory
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
-import java.security.KeyFactory
 import java.security.KeyPair
-import java.security.spec.PKCS8EncodedKeySpec
-import java.security.spec.X509EncodedKeySpec
 
-/**
- * Client-side session manager.
- * Stores authentication tokens locally on the player's computer.
- * Supports both app-password sessions and OAuth sessions.
- *
- * SECURITY:
- * - Sessions stored only on client machine
- * - File saved in Minecraft's run directory (client-side config)
- * - No passwords stored - only JWT tokens
- * - OAuth sessions include DPoP key material for authenticated requests
- */
 class ClientSessionManager(
     private val client: ClientAtProtoClient
 ) {
@@ -37,11 +31,15 @@ class ClientSessionManager(
     private var currentSession: PlayerSession? = null
     private var currentOAuthSession: OAuthSession? = null
     private var dpopKeyPair: KeyPair? = null
+    private var cachedXrpcClient: XrpcClient? = null
+    private var ktorClient: HttpClient? = null
 
     private val json = Json {
         prettyPrint = true
         ignoreUnknownKeys = true
     }
+
+    private val oauthStore: ClientOAuthSessionStore
 
     @Serializable
     data class PlayerSession(
@@ -63,29 +61,22 @@ class ClientSessionManager(
     )
 
     init {
-        // Store in Minecraft's config directory (client-side)
         val configDir = FabricLoader.getInstance().configDir.resolve("atproto-connect")
         Files.createDirectories(configDir)
         storageFile = configDir.resolve("client-session.json")
         keyFile = configDir.resolve(".session-key")
 
-        // Load or generate encryption key
         encryptionKey = ClientSecurityUtils.loadOrGenerateKey(keyFile)
 
-        // Load existing session
-        load()
+        oauthStore = ClientOAuthSessionStore(configDir)
 
+        load()
         logger.info("Client session manager initialized at: $storageFile")
     }
 
-    /**
-     * Creates a new session by authenticating with AT Protocol using an app password.
-     * Password is never stored - only the resulting tokens.
-     */
     suspend fun createSession(identifier: String, password: String): Result<PlayerSession> = runCatching {
         logger.info("Creating session for identifier ${sanitize(identifier)}")
 
-        // Authenticate with AT Protocol servers directly
         val sessionResponse = client.createSession(identifier, password).getOrThrow()
 
         val session = PlayerSession(
@@ -102,21 +93,19 @@ class ClientSessionManager(
         currentSession = session
         currentOAuthSession = null
         dpopKeyPair = null
+        cachedXrpcClient = null
+        runBlocking { oauthStore.clear() }
         save()
 
         logger.info("Session created successfully for ${session.handle}")
         session
     }
 
-    /**
-     * Stores an OAuth session from a completed OAuth flow.
-     * Reconstructs the DPoP key pair from the stored encoded keys.
-     */
     fun storeOAuthSession(oauthSession: OAuthSession, keyPair: KeyPair) {
         currentOAuthSession = oauthSession
         dpopKeyPair = keyPair
+        cachedXrpcClient = null
 
-        // Also store as a PlayerSession for compatibility with existing server-side code
         currentSession = PlayerSession(
             did = oauthSession.did,
             handle = oauthSession.handle,
@@ -128,19 +117,17 @@ class ClientSessionManager(
             authType = "oauth",
         )
 
+        val libSession = oauthSession.toLibrarySession()
+        runBlocking { oauthStore.save(libSession) }
         save()
+
         logger.info("OAuth session stored for ${oauthSession.handle}")
     }
 
-    /**
-     * Gets the current session.
-     * Automatically refreshes if the access token is expired.
-     */
     suspend fun getSession(): Result<PlayerSession> = runCatching {
         val session = currentSession
             ?: throw Exception("No active session - please login")
 
-        // Check if session needs refresh (access tokens expire after ~2 hours)
         val hoursSinceRefresh = (System.currentTimeMillis() - session.lastRefreshed) / (1000.0 * 60 * 60)
 
         if (hoursSinceRefresh >= 1.5) {
@@ -151,24 +138,81 @@ class ClientSessionManager(
         session
     }
 
-    /**
-     * Gets the current OAuth session, if any.
-     */
     fun getOAuthSession(): OAuthSession? = currentOAuthSession
 
-    /**
-     * Gets the DPoP key pair for the current session.
-     */
     fun getDpopKeyPair(): KeyPair? = dpopKeyPair
 
-    /**
-     * Refreshes the current session using the refresh token.
-     */
+    suspend fun getXrpcClient(): XrpcClient? {
+        val session = currentOAuthSession ?: return null
+        val keyPair = dpopKeyPair ?: return null
+
+        if (cachedXrpcClient != null) return cachedXrpcClient
+
+        try {
+            val exportedKeyPair = DpopSigner.ExportedKeyPair(
+                privateKeyEncoded = keyPair.private.encoded,
+                publicKeyEncoded = keyPair.public.encoded,
+            )
+            val libSession = session.toLibrarySession()
+            val signer = DpopSigner.fromExported(exportedKeyPair)
+
+            if (ktorClient == null) {
+                ktorClient = HttpClient(CIO) {
+                    install(HttpTimeout) {
+                        requestTimeoutMillis = 15_000
+                    }
+                }
+            }
+
+            val authProvider = DpopAuthProvider(
+                session = libSession,
+                signer = signer,
+                sessionStore = oauthStore,
+                refreshClient = ktorClient!!,
+                json = json,
+            )
+
+            cachedXrpcClient = XrpcClient(
+                baseUrl = session.pdsUrl,
+                httpClient = ktorClient!!,
+                json = json,
+                authProvider = authProvider,
+            )
+        } catch (e: Exception) {
+            logger.error("Failed to create XrpcClient", e)
+            return null
+        }
+
+        return cachedXrpcClient
+    }
+
     suspend fun refreshSession(): Result<PlayerSession> = runCatching {
         val oldSession = currentSession
             ?: throw Exception("No session to refresh")
 
         logger.info("Refreshing session for ${oldSession.handle}")
+
+        if (oldSession.authType == "oauth" && currentOAuthSession != null) {
+            val xrpcClient = getXrpcClient()
+            if (xrpcClient != null) {
+                val libSession = runBlocking { oauthStore.load() }
+                if (libSession != null) {
+                    val updated = currentOAuthSession!!.copy(
+                        accessToken = libSession.accessToken,
+                        refreshToken = libSession.refreshToken,
+                        lastRefreshed = System.currentTimeMillis(),
+                    )
+                    currentOAuthSession = updated
+                    currentSession = oldSession.copy(
+                        accessJwt = libSession.accessToken,
+                        refreshJwt = libSession.refreshToken,
+                        lastRefreshed = System.currentTimeMillis(),
+                    )
+                    save()
+                    return@runCatching currentSession!!
+                }
+            }
+        }
 
         val refreshResponse = client.refreshSession(
             oldSession.refreshJwt,
@@ -188,17 +232,15 @@ class ClientSessionManager(
         newSession
     }
 
-    /**
-     * Removes the current session (logout).
-     * If clearLocalCacheOnLogout is enabled, also deletes the session file.
-     */
     fun deleteSession() {
         currentSession = null
         currentOAuthSession = null
         dpopKeyPair = null
+        cachedXrpcClient = null
+
+        runBlocking { oauthStore.clear() }
 
         if (PreferencesManager.get().clearLocalCacheOnLogout) {
-            // Delete session file and key file
             try {
                 Files.deleteIfExists(storageFile)
                 Files.deleteIfExists(keyFile)
@@ -213,20 +255,10 @@ class ClientSessionManager(
         logger.info("Session deleted")
     }
 
-    /**
-     * Checks if there's an active session.
-     */
     fun hasSession(): Boolean = currentSession != null
 
-    /**
-     * Checks if the current session is an OAuth session.
-     */
     fun isOAuthSession(): Boolean = currentSession?.authType == "oauth"
 
-    /**
-     * Makes an authenticated XRPC request.
-     * For OAuth sessions, includes DPoP proof header.
-     */
     suspend fun makeAuthenticatedRequest(
         method: String,
         endpoint: String,
@@ -234,7 +266,6 @@ class ClientSessionManager(
     ): Result<String> = runCatching {
         val session = getSession().getOrThrow()
 
-        // For OAuth sessions, include DPoP proof
         val dpopHeader = if (session.authType == "oauth" && dpopKeyPair != null && currentOAuthSession != null) {
             val oauth = currentOAuthSession!!
             val url = "${oauth.pdsUrl}/xrpc/$endpoint"
@@ -248,7 +279,6 @@ class ClientSessionManager(
         } else null
 
         if (dpopHeader != null) {
-            // Use DPoP-aware request
             client.xrpcRequestWithDpop(
                 method = method,
                 endpoint = endpoint,
@@ -268,29 +298,21 @@ class ClientSessionManager(
         }
     }
 
-    /**
-     * Loads session from disk.
-     * Supports both encrypted (v3) and plaintext (v1/v2) session files
-     * for backward compatibility.
-     */
     private fun load() {
         try {
             if (Files.exists(storageFile)) {
                 val content = Files.readString(storageFile)
 
-                // Try to parse as encrypted first
                 val storage = try {
                     val decrypted = ClientSecurityUtils.decrypt(content, encryptionKey)
                     json.decodeFromString<SessionStorage>(decrypted)
                 } catch (_: Exception) {
-                    // Not encrypted (legacy format) — parse directly
                     json.decodeFromString<SessionStorage>(content)
                 }
 
                 currentSession = storage.session
-                logger.info("Loaded session from disk: ${currentSession?.handle ?: "none"} (auth: ${currentSession?.authType ?: "none"})")
+                logger.info("Loaded session from disk: ${currentSession?.handle ?: "none"} (auth: ${currentSession?.authType ?: "none"}")
 
-                // If the session was loaded from a plaintext file, re-save it encrypted
                 if (!storage.encrypted && currentSession != null) {
                     logger.info("Migrating plaintext session to encrypted storage")
                     save()
@@ -303,11 +325,6 @@ class ClientSessionManager(
         }
     }
 
-    /**
-     * Saves session to disk.
-     * If encryptedLocalStorage is enabled (default), uses AES-256-GCM encryption.
-     * Otherwise, saves as plaintext JSON (not recommended).
-     */
     private fun save() {
         try {
             Files.createDirectories(storageFile.parent)
@@ -335,12 +352,10 @@ class ClientSessionManager(
                 StandardOpenOption.TRUNCATE_EXISTING
             )
 
-            // Set restricted file permissions
             try {
                 storageFile.toFile().setReadable(true, true)
                 storageFile.toFile().setWritable(true, true)
             } catch (_: Exception) {
-                // Not critical — best effort
             }
 
             logger.debug("Saved session to disk (encrypted: $useEncryption)")
@@ -354,5 +369,64 @@ class ClientSessionManager(
             input.length <= 8 -> "***"
             else -> "${input.take(4)}...${input.takeLast(4)}"
         }
+    }
+
+    private inner class ClientOAuthSessionStore(
+        private val storageDir: Path,
+    ) : OAuthSessionStore {
+        private val sessionFile: Path = storageDir.resolve("oauth-session.json")
+
+        override suspend fun load(): io.github.kikin81.atproto.oauth.OAuthSession? {
+            return try {
+                if (Files.exists(sessionFile)) {
+                    val content = Files.readString(sessionFile)
+                    json.decodeFromString<io.github.kikin81.atproto.oauth.OAuthSession>(content)
+                } else null
+            } catch (e: Exception) {
+                logger.warn("Failed to load OAuth session", e)
+                null
+            }
+        }
+
+        override suspend fun save(session: io.github.kikin81.atproto.oauth.OAuthSession) {
+            try {
+                Files.createDirectories(sessionFile.parent)
+                Files.writeString(
+                    sessionFile,
+                    json.encodeToString(session),
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING,
+                )
+                logger.debug("OAuth session saved to disk")
+            } catch (e: Exception) {
+                logger.error("Failed to save OAuth session", e)
+            }
+        }
+
+        override suspend fun clear() {
+            try {
+                Files.deleteIfExists(sessionFile)
+                logger.debug("OAuth session cleared from disk")
+            } catch (e: Exception) {
+                logger.warn("Failed to clear OAuth session", e)
+            }
+        }
+    }
+
+    private fun OAuthSession.toLibrarySession(): io.github.kikin81.atproto.oauth.OAuthSession {
+        return io.github.kikin81.atproto.oauth.OAuthSession(
+            accessToken = accessToken,
+            refreshToken = refreshToken,
+            did = did,
+            handle = handle,
+            pdsUrl = pdsUrl,
+            tokenEndpoint = tokenEndpoint,
+            revocationEndpoint = null,
+            clientId = clientId,
+            dpopPrivateKey = dpopPrivateKeyEncoded,
+            dpopPublicKey = dpopPublicKeyEncoded,
+            authServerNonce = authServerNonce,
+            pdsNonce = pdsNonce,
+        )
     }
 }

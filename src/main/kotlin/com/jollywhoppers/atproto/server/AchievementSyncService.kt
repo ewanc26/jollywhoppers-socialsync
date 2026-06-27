@@ -8,14 +8,14 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
-import uk.ewancroft.atpkt.generated.com.jollywhoppers.minecraft.Achievement
+import com.jollywhoppers.atproto.server.model.Achievement
 
 /**
  * Syncs Minecraft advancements (achievements) to AT Protocol records.
  */
 class AchievementSyncService(
-    private val recordManager: uk.ewancroft.atpkt.core.RecordManager,
-    private val sessionManager: uk.ewancroft.atpkt.core.AtProtoSessionManager,
+    private val recordManager: RecordManager,
+    private val sessionManager: AtProtoSessionManager,
     private val identityStore: PlayerIdentityStore,
     private val syncPreferencesStore: PlayerSyncPreferencesStore,
 ) {

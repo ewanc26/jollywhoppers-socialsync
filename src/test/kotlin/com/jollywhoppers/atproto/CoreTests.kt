@@ -719,21 +719,21 @@ class AchievementSyncServiceTest {
 
     @TempDir
     lateinit var tempDir: Path
-    private val client = uk.ewancroft.atpkt.core.AtProtoClient(fallbackPdsUrl = "https://bsky.social")
+    private val client = AtProtoClient(slingshotUrl = "https://slingshot.microcosm.blue", fallbackPdsUrl = "https://bsky.social")
 
-    private lateinit var sessionManager: uk.ewancroft.atpkt.core.AtProtoSessionManager
+    private lateinit var sessionManager: AtProtoSessionManager
     private lateinit var identityStore: PlayerIdentityStore
     private lateinit var syncPreferencesStore: PlayerSyncPreferencesStore
-    private lateinit var recordManager: uk.ewancroft.atpkt.core.RecordManager
+    private lateinit var recordManager: RecordManager
     private lateinit var achievementSyncService: AchievementSyncService
     private val testPlayerUuid: UUID = UUID.randomUUID()
 
     @BeforeEach
     fun setup() {
-        sessionManager = uk.ewancroft.atpkt.core.AtProtoSessionManager(tempDir.resolve("test-sessions.json"), client, dummyEncryptionProvider)
+        sessionManager = AtProtoSessionManager(tempDir.resolve("test-sessions.json"), client)
         identityStore = PlayerIdentityStore(tempDir.resolve("player-identities.json"))
         syncPreferencesStore = PlayerSyncPreferencesStore
-        recordManager = uk.ewancroft.atpkt.core.RecordManager(sessionManager)
+        recordManager = RecordManager(sessionManager)
         
         achievementSyncService = AchievementSyncService(
             recordManager,
@@ -744,15 +744,10 @@ class AchievementSyncServiceTest {
         
         // Mock identity and session for the test
         identityStore.linkIdentity(testPlayerUuid, "did:plc:test123", "test.bsky.social")
-        sessionManager.storeSession(
+        sessionManager.storeVerifiedSession(
             testPlayerUuid, "did:plc:test123", "test.bsky.social", 
             "https://bsky.social", "access", "refresh"
         )
-    }
-
-    private val dummyEncryptionProvider = object : uk.ewancroft.atpkt.core.AtProtoSessionManager.IEncryptionProvider {
-        override fun encrypt(plaintext: String): String = plaintext
-        override fun decrypt(ciphertext: String): String = ciphertext
     }
 
     // Since onAdvancementCompleted needs ServerPlayer and AdvancementHolder, 

@@ -1,5 +1,6 @@
 package com.jollywhoppers.atproto.server
 
+import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.stats.Stat
@@ -13,14 +14,14 @@ import kotlinx.coroutines.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
-import uk.ewancroft.atpkt.generated.com.jollywhoppers.minecraft.player.Stats
+import com.jollywhoppers.atproto.server.model.Stats
 
 /**
  * Periodically snapshots online players' stats and syncs them to AT Protocol.
  */
 class PlayerStatSyncService(
-    private val recordManager: uk.ewancroft.atpkt.core.RecordManager,
-    private val sessionManager: uk.ewancroft.atpkt.core.AtProtoSessionManager,
+    private val recordManager: RecordManager,
+    private val sessionManager: AtProtoSessionManager,
     private val identityStore: PlayerIdentityStore,
     private val syncPreferencesStore: PlayerSyncPreferencesStore,
     storageFile: Path,
@@ -121,10 +122,24 @@ class PlayerStatSyncService(
         return StatsSnapshot(SnapshotPlayer(player.uuid, player.name.string), record, fingerprint)
     }
 
+    @Suppress("UNCHECKED_CAST")
     private fun extractStatistics(player: ServerPlayer): List<StatisticEntry> {
         val statsCounter = player.getStats()
-        // Simplified for brevity, assume extractStatistics works as before using reflection
-        return emptyList() 
+        val entries = mutableListOf<StatisticEntry>()
+        val statTypeRegistry = BuiltInRegistries.STAT_TYPE
+
+        for (statType in statTypeRegistry) {
+            val categoryKey = statTypeRegistry.getKey(statType)?.toString() ?: continue
+            val valueRegistry = statType.registry
+            for (stat in statType) {
+                val value = statsCounter.getValue(stat)
+                if (value > 0) {
+                    val valueKey = (valueRegistry as net.minecraft.core.Registry<Any>).getKey(stat.value!!)?.toString() ?: continue
+                    entries.add(StatisticEntry(key = valueKey, value = value, category = categoryKey))
+                }
+            }
+        }
+        return entries
     }
 
     private fun buildServerId(server: MinecraftServer): String {
@@ -141,7 +156,10 @@ class PlayerStatSyncService(
             .joinToString("") { "%02x".format(it) }
     }
 
-    private fun extractPlaytimeMinutes(stats: List<StatisticEntry>) = 0
+    private fun extractPlaytimeMinutes(stats: List<StatisticEntry>): Int {
+        val playTicks = stats.find { it.key == "minecraft:play_time" }?.value ?: 0
+        return playTicks / (20 * 60)
+    }
 
     fun shutdown() = coroutineScope.cancel()
 
