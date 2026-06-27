@@ -1,13 +1,19 @@
 package com.jollywhoppers.atproto.server
 
+import com.jollywhoppers.atproto.server.model.IdentityRecord
 import com.jollywhoppers.security.SecurityUtils
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.decodeFromJsonElement
 import org.slf4j.LoggerFactory
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
+import java.time.Instant
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.locks.ReentrantReadWriteLock
@@ -24,10 +30,15 @@ import kotlin.concurrent.write
  * - Thread-safe operations
  * - Path validation
  */
-class PlayerIdentityStore(private val storageFile: Path) {
+class PlayerIdentityStore(
+    private val storageFile: Path,
+    private val recordManager: RecordManager? = null,
+    private val sessionManager: AtProtoSessionManager? = null,
+) {
     private val logger = LoggerFactory.getLogger("atproto-connect")
     private val identities = ConcurrentHashMap<UUID, PlayerIdentity>()
     private val fileLock = ReentrantReadWriteLock()
+    private val atProtoScope = CoroutineScope(Dispatchers.IO)
     
     private val json = Json {
         prettyPrint = true
@@ -78,9 +89,39 @@ class PlayerIdentityStore(private val storageFile: Path) {
         
         identities[uuid] = identity
         save()
+        publishIdentityToAtProtocol(uuid, did, handle, null)
         
         logger.info("Linked player $uuid to AT Protocol identity $handle ($did)")
         return identity
+    }
+
+    /**
+     * Publish identity mapping to AT Protocol as a record in the server's repo.
+     * Non-critical; local file is authoritative. On failure, only a warning is logged.
+     */
+    fun publishIdentityToAtProtocol(uuid: UUID, did: String, handle: String?, displayName: String?) {
+        val rm = recordManager ?: return
+        val sm = sessionManager ?: return
+        atProtoScope.launch {
+            try {
+                val record = IdentityRecord(
+                    playerUuid = uuid.toString(),
+                    did = did,
+                    handle = handle,
+                    displayName = displayName,
+                    linkedAt = Instant.now().toString(),
+                )
+                rm.putTypedRecord(
+                    ServerAccount.SERVER_PLAYER_UUID,
+                    "com.jollywhoppers.minecraft.identity",
+                    uuid.toString(),
+                    record,
+                )
+                logger.debug("Published identity for player $uuid to AT Protocol")
+            } catch (e: Exception) {
+                logger.warn("Failed to publish identity to AT Protocol for player $uuid: ${e.message}")
+            }
+        }
     }
 
     /**
@@ -173,6 +214,42 @@ class PlayerIdentityStore(private val storageFile: Path) {
         if (changed) {
             save()
             logger.info("Cleared legacy sync consent fields after migration")
+        }
+    }
+
+    /**
+     * Load identities from AT Protocol backup into the in-memory store.
+     * Only populates entries that don't already exist locally.
+     * Called on server start to recover identities if the local file was lost.
+     */
+    suspend fun loadIdentitiesFromAtProtocol() {
+        val rm = recordManager ?: return
+        try {
+            val result = rm.listAllRecords(ServerAccount.SERVER_PLAYER_UUID, "com.jollywhoppers.minecraft.identity")
+            val records = result.getOrNull() ?: return
+            var loaded = 0
+            for (recordData in records) {
+                try {
+                    val identityRecord = json.decodeFromJsonElement<IdentityRecord>(recordData.value)
+                    val uuid = UUID.fromString(identityRecord.playerUuid)
+                    if (!identities.containsKey(uuid)) {
+                        identities[uuid] = PlayerIdentity(
+                            uuid = identityRecord.playerUuid,
+                            did = identityRecord.did,
+                            handle = identityRecord.handle ?: "",
+                        )
+                        loaded++
+                    }
+                } catch (e: Exception) {
+                    logger.warn("Failed to decode identity record from AT Protocol: ${e.message}")
+                }
+            }
+            if (loaded > 0) {
+                save()
+                logger.info("Loaded $loaded identities from AT Protocol backup")
+            }
+        } catch (e: Exception) {
+            logger.warn("Failed to load identities from AT Protocol: ${e.message}")
         }
     }
 

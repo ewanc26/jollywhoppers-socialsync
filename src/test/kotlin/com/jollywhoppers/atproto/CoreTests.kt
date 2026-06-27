@@ -2,6 +2,7 @@ package com.jollywhoppers.atproto
 
 import com.jollywhoppers.atproto.server.*
 import com.jollywhoppers.security.*
+import com.jollywhoppers.atproto.server.AchievementSyncStore
 import io.github.kikin81.atproto.runtime.NoAuth
 import io.github.kikin81.atproto.runtime.XrpcClient
 import io.ktor.client.HttpClient
@@ -732,6 +733,7 @@ class AchievementSyncServiceTest {
     private lateinit var syncPreferencesStore: PlayerSyncPreferencesStore
     private lateinit var recordManager: RecordManager
     private lateinit var achievementSyncService: AchievementSyncService
+    private lateinit var achievementSyncStore: AchievementSyncStore
     private val testPlayerUuid: UUID = UUID.randomUUID()
 
     @BeforeEach
@@ -742,12 +744,14 @@ class AchievementSyncServiceTest {
         identityStore = PlayerIdentityStore(tempDir.resolve("player-identities.json"))
         syncPreferencesStore = PlayerSyncPreferencesStore
         recordManager = RecordManager(testXrpcClient, Json { ignoreUnknownKeys = true }, sessionManager)
+        achievementSyncStore = AchievementSyncStore(tempDir.resolve("achievement-sync-state.json"))
         
         achievementSyncService = AchievementSyncService(
             recordManager,
             sessionManager,
             identityStore,
-            syncPreferencesStore
+            syncPreferencesStore,
+            achievementSyncStore
         )
         
         // Mock identity and session for the test

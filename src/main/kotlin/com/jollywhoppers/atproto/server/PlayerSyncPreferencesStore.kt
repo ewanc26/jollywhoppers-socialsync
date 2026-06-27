@@ -1,10 +1,16 @@
 package com.jollywhoppers.atproto.server
 
+import com.jollywhoppers.atproto.server.model.SyncPlayerRef
+import com.jollywhoppers.atproto.server.model.SyncPreferencesRecord
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import net.fabricmc.loader.api.FabricLoader
 import org.slf4j.LoggerFactory
 import java.nio.file.Files
+import java.time.Instant
 import java.util.UUID
 import kotlin.io.path.exists
 import kotlin.io.path.readText
@@ -59,14 +65,37 @@ data class PlayerSyncPreferences(
 }
 
 /**
- * Server-side persistent storage for player sync preferences.
- * Each player's preferences are stored in a JSON file.
- */
+     * Server-side persistent storage for player sync preferences.
+     * Each player's preferences are stored in a JSON file and also published to AT Protocol.
+     */
 object PlayerSyncPreferencesStore {
     private val logger = LoggerFactory.getLogger("atproto-connect-server")
     private val json = Json { prettyPrint = true }
     private val preferencesDir: java.nio.file.Path by lazy {
         FabricLoader.getInstance().configDir.resolve("atproto-connect").resolve("player-preferences")
+    }
+
+    private var recordManager: RecordManager? = null
+    private var sessionManager: AtProtoSessionManager? = null
+    private val atProtoScope = CoroutineScope(Dispatchers.IO)
+
+    fun setAtProtoDependencies(recordManager: RecordManager, sessionManager: AtProtoSessionManager) {
+        this.recordManager = recordManager
+        this.sessionManager = sessionManager
+    }
+
+    init {
+        try {
+            Files.createDirectories(preferencesDir)
+            logger.info("Initialized player sync preferences directory")
+        } catch (e: Exception) {
+            logger.error("Failed to create preferences directory: ${e.message}", e)
+        }
+    }
+
+    fun setAtProtoDependencies(recordManager: RecordManager, sessionManager: AtProtoSessionManager) {
+        this.recordManager = recordManager
+        this.sessionManager = sessionManager
     }
 
     init {
@@ -121,10 +150,68 @@ object PlayerSyncPreferencesStore {
     }
 
     /**
+     * Publish sync preferences to AT Protocol as a record in the player's repo.
+     * Non-critical; local file is authoritative. On failure, only a warning is logged.
+     */
+    fun publishToAtProtocol(uuid: UUID, prefs: PlayerSyncPreferences, username: String) {
+        val rm = recordManager ?: return
+        val sm = sessionManager ?: return
+        atProtoScope.launch {
+            try {
+                val record = SyncPreferencesRecord(
+                    player = SyncPlayerRef(uuid = uuid.toString(), username = username),
+                    syncStats = prefs.syncStatsEnabled,
+                    syncSessions = prefs.syncSessionsEnabled,
+                    syncAchievements = prefs.syncAchievementsEnabled,
+                    syncServerStatus = prefs.syncServerStatusEnabled,
+                    statsSyncFrequency = prefs.statsSyncFrequency,
+                    sessionSyncFrequency = prefs.sessionSyncFrequency,
+                    achievementSyncFrequency = prefs.achievementSyncFrequency,
+                    updatedAt = Instant.now().toString(),
+                )
+                rm.putTypedRecord(uuid, "com.jollywhoppers.minecraft.syncpreferences", "self", record)
+                logger.debug("Published sync preferences to AT Protocol for player $uuid")
+            } catch (e: Exception) {
+                logger.warn("Failed to publish sync preferences to AT Protocol for player $uuid: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * Fetch sync preferences from AT Protocol for a player.
+     * Returns the deserialized preferences, or null if no record exists or on failure.
+     */
+    suspend fun fetchFromAtProtocol(uuid: UUID): Result<PlayerSyncPreferences?> {
+        val rm = recordManager ?: return Result.success(null)
+        return try {
+            val result = rm.getTypedRecord<SyncPreferencesRecord>(
+                uuid, "com.jollywhoppers.minecraft.syncpreferences", "self"
+            )
+            result.map { recordData ->
+                val rec = recordData.value
+                PlayerSyncPreferences(
+                    playerId = rec.player.uuid,
+                    syncStatsEnabled = rec.syncStats,
+                    syncSessionsEnabled = rec.syncSessions,
+                    syncAchievementsEnabled = rec.syncAchievements,
+                    syncServerStatusEnabled = rec.syncServerStatus,
+                    statsSyncFrequency = rec.statsSyncFrequency,
+                    sessionSyncFrequency = rec.sessionSyncFrequency,
+                    achievementSyncFrequency = rec.achievementSyncFrequency,
+                )
+            }
+        } catch (e: Exception) {
+            logger.warn("Failed to fetch sync preferences from AT Protocol for player $uuid: ${e.message}")
+            Result.success(null)
+        }
+    }
+
+    /**
      * Update sync preferences for a player
      */
     fun update(
         playerId: UUID,
+        username: String,
         stats: Boolean? = null,
         sessions: Boolean? = null,
         achievements: Boolean? = null,
@@ -145,6 +232,7 @@ object PlayerSyncPreferencesStore {
             lastUpdated = System.currentTimeMillis(),
         )
         save(updated)
+        publishToAtProtocol(playerId, updated, username)
     }
 
     /**
