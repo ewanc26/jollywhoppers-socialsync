@@ -55,8 +55,12 @@ dependencies {
 	// Kotlinx serialization
 	implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3"
 
-	// atpkt library
-	implementation("uk.ewancroft:atpkt:0.1.0")
+	// AT Protocol Kotlin SDK (replaces deprecated atpkt)
+	implementation "io.github.kikin81.atproto:runtime:${project.atproto_kotlin_version}"
+	implementation "io.github.kikin81.atproto:models:${project.atproto_kotlin_version}"
+	implementation "io.github.kikin81.atproto:oauth:${project.atproto_kotlin_version}"
+	implementation "io.ktor:ktor-client-cio:${project.ktor_version}"
+
 	// Testing
 	testImplementation "org.junit.jupiter:junit-jupiter:5.10.0"
 	testImplementation "org.jetbrains.kotlin:kotlin-test:2.0.0"
@@ -90,8 +94,8 @@ java {
 	// If you remove this line, sources will not be generated.
 	withSourcesJar()
 
-	sourceCompatibility = JavaVersion.VERSION_25
-	targetCompatibility = JavaVersion.VERSION_25}
+	sourceCompatibility = JavaVersion.VERSION_21
+	targetCompatibility = JavaVersion.VERSION_21}
 
 jar {
 	inputs.property "archivesName", project.base.archivesName
