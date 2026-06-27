@@ -1,10 +1,6 @@
 package com.jollywhoppers.atproto.server
 
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import net.minecraft.server.MinecraftServer
@@ -102,7 +98,7 @@ class ServerStatusSyncService(
                 serverAddress = serverAddress,
             ),
             version = server.serverVersion,
-            protocolVersion = null, // Not directly accessible
+            protocolVersion = net.minecraft.SharedConstants.getCurrentVersion().protocolVersion(),
             maxPlayers = server.maxPlayers,
             onlinePlayers = server.playerList.players.size,
             playerSample = onlinePlayers.takeIf { it.isNotEmpty() },
@@ -131,7 +127,15 @@ class ServerStatusSyncService(
     }
 
     fun shutdown() {
-        coroutineScope.cancel()
+        try {
+            runBlocking {
+                withTimeout(5000) {
+                    coroutineScope.coroutineContext[Job]?.children?.forEach { it.join() }
+                }
+            }
+        } catch (e: TimeoutCancellationException) {
+            logger.warn("Timeout while shutting down ${this::class.simpleName}")
+        }
     }
 
     @Serializable

@@ -1,10 +1,6 @@
 package com.jollywhoppers.atproto.server
 
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import net.minecraft.server.MinecraftServer
@@ -17,6 +13,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.jsonObject
 import java.util.concurrent.ConcurrentHashMap
+import com.jollywhoppers.atproto.server.ServerIdentity
 
 /**
  * Tracks player play sessions and syncs them to AT Protocol records.
@@ -72,7 +69,7 @@ class PlayerSessionSyncService(
             onPlayerLeave(uuid, "reconnected", server)
         }
 
-        val serverId = buildServerId(server)
+        val serverId = ServerIdentity.buildServerId()
         val serverName = server.getMotd().ifBlank { "Minecraft Server" }
         val serverAddress = server.getLocalIp().takeIf { it.isNotBlank() }?.let { ip ->
             val port = server.getPort()
@@ -184,18 +181,16 @@ class PlayerSessionSyncService(
         }.take(256) // Lexicon maxLength
     }
 
-    private fun buildServerId(server: MinecraftServer): String {
-        val serverPath = server.serverDirectory
-            .toAbsolutePath()
-            .normalize()
-            .toString()
-        val payload = "socialsync:$serverPath"
-        val digest = java.security.MessageDigest.getInstance("SHA-256").digest(payload.toByteArray(Charsets.UTF_8))
-        return digest.joinToString("") { byte -> "%02x".format(byte) }
-    }
-
     fun shutdown() {
-        coroutineScope.cancel()
+        try {
+            runBlocking {
+                withTimeout(5000) {
+                    coroutineScope.coroutineContext[Job]?.children?.forEach { it.join() }
+                }
+            }
+        } catch (e: TimeoutCancellationException) {
+            logger.warn("Timeout while shutting down ${this::class.simpleName}")
+        }
     }
 
     @Serializable

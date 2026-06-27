@@ -1,7 +1,8 @@
 package com.jollywhoppers.network
 
-import com.jollywhoppers.socialsync
+import com.jollywhoppers.security.RateLimiter
 import com.jollywhoppers.security.SecurityAuditor
+import com.jollywhoppers.socialsync
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -18,6 +19,7 @@ import org.slf4j.LoggerFactory
 object ServerNetworkHandler {
     private val logger = LoggerFactory.getLogger("atproto-connect-server")
     private val coroutineScope = CoroutineScope(Dispatchers.IO)
+    private val rateLimiter = RateLimiter()
 
     /**
      * Registers all server-side packet handlers.
@@ -64,6 +66,13 @@ object ServerNetworkHandler {
      * Handles authentication by verifying the session with AT Protocol servers.
      */
     private suspend fun handleAuthentication(player: ServerPlayer, packet: AtProtoPackets.AuthenticatePacket) {
+        val rateCheck = rateLimiter.checkAttempt(player.uuid)
+        if (!rateCheck.allowed) {
+            sendAuthResponse(player, false, "Too many authentication attempts. Please try again later.")
+            logger.warn("Rate limited authentication attempt from player ${player.name.string}")
+            return
+        }
+
         try {
             // Verify the token is valid by making a test API call
             val verifyResult = socialsync.atProtoClient.xrpcRequest(
@@ -74,6 +83,7 @@ object ServerNetworkHandler {
             )
 
             if (verifyResult.isFailure) {
+                rateLimiter.recordFailure(player.uuid)
                 sendAuthResponse(player, false, "Token verification failed")
                 SecurityAuditor.logAuthFailure(
                     player.uuid,
@@ -101,6 +111,8 @@ object ServerNetworkHandler {
                 SecurityAuditor.logIdentityLink(player.uuid, packet.handle, player.name.string)
             }
 
+            rateLimiter.recordSuccess(player.uuid)
+
             // Send success response to client
             sendAuthResponse(player, true, "Successfully authenticated as ${packet.handle}")
             
@@ -108,6 +120,7 @@ object ServerNetworkHandler {
             logger.info("Player ${player.name.string} authenticated as ${packet.handle}")
 
         } catch (e: Exception) {
+            rateLimiter.recordFailure(player.uuid)
             sendAuthResponse(player, false, "Verification error: ${e.message}")
             logger.error("Failed to verify authentication for ${player.name.string}", e)
         }

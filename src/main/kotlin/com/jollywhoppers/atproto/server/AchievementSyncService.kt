@@ -8,6 +8,7 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
+import com.jollywhoppers.atproto.server.ServerIdentity
 import com.jollywhoppers.atproto.server.model.Achievement
 
 /**
@@ -63,7 +64,7 @@ class AchievementSyncService(
             try {
                 val record = Achievement(
                     player = buildJsonObject { put("uuid", uuid.toString()); put("username", player.name.string) },
-                    server = buildJsonObject { put("serverId", "default") },
+                    server = buildJsonObject { put("serverId", ServerIdentity.buildServerId()) },
                     achievementId = advancementId,
                     achievementName = advancementName,
                     achievementDescription = advancementDescription.ifEmpty { "" },
@@ -101,6 +102,14 @@ class AchievementSyncService(
     }
 
     fun shutdown() {
-        coroutineScope.cancel()
+        try {
+            runBlocking {
+                withTimeout(5000) {
+                    coroutineScope.coroutineContext[Job]?.children?.forEach { it.join() }
+                }
+            }
+        } catch (e: TimeoutCancellationException) {
+            logger.warn("Timeout while shutting down ${this::class.simpleName}")
+        }
     }
 }

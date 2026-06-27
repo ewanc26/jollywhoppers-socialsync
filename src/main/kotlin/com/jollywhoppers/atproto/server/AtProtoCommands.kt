@@ -11,6 +11,7 @@ import net.minecraft.commands.CommandSourceStack
 import net.minecraft.commands.Commands
 import net.minecraft.network.chat.Component
 import org.slf4j.LoggerFactory
+import java.util.UUID
 
 /**
  * Handles AT Protocol-related commands for players.
@@ -114,6 +115,25 @@ class AtProtoCommands(
                                     Commands.literal("off")
                                         .executes { context -> setSyncConsent(context, syncServerStatus = false) }
                                 )
+                        )
+                )
+                .then(
+                    Commands.literal("admin")
+                        .requires { source -> source.hasPermission(4) }
+                        .then(
+                            Commands.literal("list")
+                                .executes { context -> adminList(context) }
+                        )
+                        .then(
+                            Commands.literal("remove")
+                                .then(
+                                    Commands.argument("player", StringArgumentType.greedyString())
+                                        .executes { context -> adminRemove(context) }
+                                )
+                        )
+                        .then(
+                            Commands.literal("status")
+                                .executes { context -> adminStatus(context) }
                         )
                 )
                 .executes { context -> help(context) }
@@ -522,6 +542,105 @@ class AtProtoCommands(
                     .append(Component.literal("\n  §7Login is handled client-side (use the mod config screen)"))
                     .append(Component.literal("\n§7Authentication happens on your computer"))
                     .append(Component.literal("\n§7Your password never goes to the server!"))
+            },
+            false
+        )
+        return 1
+    }
+
+    /**
+     * Lists all linked players (admin only).
+     */
+    private fun adminList(context: CommandContext<CommandSourceStack>): Int {
+        val identities = identityStore.getAllIdentities()
+
+        if (identities.isEmpty()) {
+            context.source.sendSuccess(
+                { Component.literal("§cNo linked players found") },
+                false
+            )
+            return 1
+        }
+
+        val message = buildString {
+            append("§b━━━ Linked Players (${identities.size}) ━━━")
+            identities.forEach { (uuid, identity) ->
+                append("\n§7UUID: §f$uuid")
+                append("\n§7Handle: §f${identity.handle}")
+                append("\n§7DID: §f${identity.did}")
+                append("\n")
+            }
+        }
+
+        context.source.sendSuccess(
+            { Component.literal(message) },
+            false
+        )
+        return 1
+    }
+
+    /**
+     * Removes a player's link and session (admin only).
+     */
+    private fun adminRemove(context: CommandContext<CommandSourceStack>): Int {
+        val identifier = StringArgumentType.getString(context, "player")
+
+        val minecraftPlayer = context.source.server.playerList.players
+            .firstOrNull { it.name.string.equals(identifier, ignoreCase = true) }
+
+        val identity = if (minecraftPlayer != null) {
+            identityStore.getIdentity(minecraftPlayer.uuid)
+        } else {
+            val uuid = identityStore.getUuidByHandle(identifier)
+                ?: identityStore.getUuidByDid(identifier)
+            uuid?.let { identityStore.getIdentity(it) }
+        }
+
+        return if (identity != null) {
+            val uuid = UUID.fromString(identity.uuid)
+
+            if (sessionManager.hasSession(uuid)) {
+                sessionManager.deleteSession(uuid)
+            }
+
+            identityStore.unlinkIdentity(uuid)
+
+            SecurityAuditor.logSecurityEvent(
+                "admin_remove",
+                uuid,
+                "Admin removed player ${identity.handle}",
+            )
+
+            context.source.sendSuccess(
+                {
+                    Component.literal("§a✓ Removed player ${identity.handle}")
+                        .append(Component.literal("\n§7UUID: §f${identity.uuid}"))
+                        .append(Component.literal("\n§7DID: §f${identity.did}"))
+                },
+                true
+            )
+            logger.info("Admin removed player ${identity.handle}")
+            1
+        } else {
+            context.source.sendFailure(
+                Component.literal("§cNo linked player found for: $identifier")
+            )
+            0
+        }
+    }
+
+    /**
+     * Shows system status (admin only).
+     */
+    private fun adminStatus(context: CommandContext<CommandSourceStack>): Int {
+        val linkedCount = identityStore.getAllIdentities().size
+        val activeSessions = sessionManager.getAllSessions().size
+
+        context.source.sendSuccess(
+            {
+                Component.literal("§b━━━ AT Protocol System Status ━━━")
+                    .append(Component.literal("\n§7Linked Players: §f$linkedCount"))
+                    .append(Component.literal("\n§7Active Sessions: §f$activeSessions"))
             },
             false
         )

@@ -1,23 +1,18 @@
 package com.jollywhoppers.atproto.server
 
+import io.ktor.http.ContentType
+import io.ktor.server.application.*
+import io.ktor.server.cio.*
+import io.ktor.server.engine.*
+import io.ktor.server.plugins.statuspages.*
+import io.ktor.server.response.*
+import io.ktor.server.routing.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 import org.slf4j.LoggerFactory
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 
-/**
- * HTTP server providing AppView endpoints for querying Minecraft data.
- * 
- * This server hosts a simple REST API that allows clients to:
- * - Query player profiles and stats
- * - Browse leaderboards
- * - Search achievements
- * - Discover trending players and achievements
- * 
- * In production, this would be a full microservice with database backing,
- * subscription to AT Protocol firehose, and proper caching.
- */
 class AppViewHttpServer(
     private val appViewService: AppViewService,
     private val port: Int = 8080
@@ -28,27 +23,105 @@ class AppViewHttpServer(
         ignoreUnknownKeys = true
     }
 
-    /**
-     * Start the HTTP server.
-     * This is a simplified example - in production use a full framework like Ktor.
-     */
+    private var server: EmbeddedServer<*, *>? = null
+
     fun start() {
         logger.info("Starting AppView HTTP server on port $port")
-        
-        // This is a placeholder for the actual implementation
-        // In a real scenario, you'd use:
-        // - Ktor: https://ktor.io/
-        // - Spring Boot: https://spring.io/projects/spring-boot
-        // - Or any other web framework
-        
-        logger.info("AppView server ready. Example endpoints:")
-        logger.info("  GET /player/{uuid}")
-        logger.info("  GET /player/{uuid}/stats")
-        logger.info("  GET /player/{uuid}/achievements")
-        logger.info("  GET /leaderboard/{stat}")
-        logger.info("  GET /search?q={query}")
-        logger.info("  GET /trending/achievements")
-        logger.info("  GET /stats/summary/{uuid}")
+
+        val engine = embeddedServer(CIO, port = port) {
+            install(StatusPages) {
+                exception<Throwable> { call, cause ->
+                    logger.error("Unhandled exception", cause)
+                    call.respondText(
+                        contentType = ContentType.Application.Json,
+                        text = json.encodeToString(
+                            ApiResponse<Nothing>(
+                                success = false,
+                                error = cause.message ?: "Internal server error"
+                            )
+                        )
+                    )
+                }
+            }
+
+            routing {
+                get("/health") {
+                    call.respondText(
+                        contentType = ContentType.Application.Json,
+                        text = json.encodeToString(handleHealthCheck())
+                    )
+                }
+                get("/profile/{serverId}/{did}") {
+                    call.respondText(
+                        contentType = ContentType.Application.Json,
+                        text = json.encodeToString(
+                            handleGetPlayerProfile(call.parameters["did"] ?: "")
+                        )
+                    )
+                }
+                get("/leaderboard/{serverId}") {
+                    val statType = call.request.queryParameters["statType"] ?: ""
+                    val limit = call.request.queryParameters["limit"] ?: "20"
+                    call.respondText(
+                        contentType = ContentType.Application.Json,
+                        text = json.encodeToString(handleGetLeaderboard(statType, limit))
+                    )
+                }
+                get("/achievements/{serverId}/{did}") {
+                    val did = call.parameters["did"] ?: ""
+                    val limit = call.request.queryParameters["limit"] ?: "25"
+                    val offset = call.request.queryParameters["offset"] ?: "0"
+                    call.respondText(
+                        contentType = ContentType.Application.Json,
+                        text = json.encodeToString(
+                            handleGetPlayerAchievements(did, limit, offset)
+                        )
+                    )
+                }
+                get("/stats/{serverId}/{did}") {
+                    val did = call.parameters["did"] ?: ""
+                    val limit = call.request.queryParameters["limit"] ?: "10"
+                    val offset = call.request.queryParameters["offset"] ?: "0"
+                    call.respondText(
+                        contentType = ContentType.Application.Json,
+                        text = json.encodeToString(
+                            handleGetPlayerStats(did, limit, offset)
+                        )
+                    )
+                }
+                get("/search") {
+                    val username = call.request.queryParameters["username"] ?: ""
+                    call.respondText(
+                        contentType = ContentType.Application.Json,
+                        text = json.encodeToString(handleSearch(username))
+                    )
+                }
+                get("/stats-summary/{serverId}") {
+                    call.respondText(
+                        contentType = ContentType.Application.Json,
+                        text = json.encodeToString(
+                            handleGetStatsSummary(call.parameters["serverId"] ?: "")
+                        )
+                    )
+                }
+                get("/trending-achievements/{serverId}") {
+                    val limit = call.request.queryParameters["limit"] ?: "10"
+                    call.respondText(
+                        contentType = ContentType.Application.Json,
+                        text = json.encodeToString(handleGetTrendingAchievements(limit))
+                    )
+                }
+            }
+        }
+        engine.start(wait = false)
+        server = engine
+
+        logger.info("AppView server ready on port $port")
+    }
+
+    fun stop() {
+        server?.stop(1000, 3000)
+        logger.info("AppView server stopped")
     }
 
     // ============================================================================

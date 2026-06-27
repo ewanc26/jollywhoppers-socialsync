@@ -2,6 +2,7 @@ package com.jollywhoppers.network
 
 import com.jollywhoppers.atproto.server.PlayerSyncPreferencesStore
 import com.jollywhoppers.security.SecurityAuditor
+import com.jollywhoppers.socialsync
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -52,7 +53,20 @@ object ServerNetworkHandlers {
             coroutineScope.launch {
                 try {
                     // Verify player is authenticated before accepting preferences
-                    // (In a real implementation, you'd check the session store)
+                    if (!socialsync.sessionManager.hasSession(player.uuid)) {
+                        logger.warn("Unauthenticated player ${player.name.string} attempted to set sync preferences")
+                        SecurityAuditor.logSecurityEvent(
+                            "sync_preference_unauthorized",
+                            playerId,
+                            "Unauthenticated player attempted to set sync preferences",
+                        )
+                        return@launch
+                    }
+
+                    // Clamp frequency values to valid range (1-240 minutes)
+                    val statsFreq = packet.statsSyncFrequency.coerceIn(1, 240)
+                    val sessionsFreq = packet.sessionSyncFrequency.coerceIn(1, 240)
+                    val achievementsFreq = packet.achievementSyncFrequency.coerceIn(1, 240)
 
                     // Update sync preferences
                     PlayerSyncPreferencesStore.update(
@@ -61,9 +75,9 @@ object ServerNetworkHandlers {
                         sessions = packet.syncSessionsEnabled,
                         achievements = packet.syncAchievementsEnabled,
                         serverStatus = packet.syncServerStatusEnabled,
-                        statsFrequency = packet.statsSyncFrequency,
-                        sessionsFrequency = packet.sessionSyncFrequency,
-                        achievementsFrequency = packet.achievementSyncFrequency,
+                        statsFrequency = statsFreq,
+                        sessionsFrequency = sessionsFreq,
+                        achievementsFrequency = achievementsFreq,
                     )
 
                     // Audit log
