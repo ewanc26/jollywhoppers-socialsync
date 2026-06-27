@@ -44,8 +44,8 @@ object socialsyncClient : ClientModInitializer {
 			sessionManager = ClientSessionManager(atProtoClient)
 			logger.info("Client-side session manager initialized")
 
-			// Initialize OAuth manager
-			oAuthManager = OAuthManager(atProtoClient)
+			// Initialize OAuth manager (uses DiscoveryChain from kikin81 library)
+			oAuthManager = OAuthManager()
 			logger.info("OAuth manager initialized")
 
 			// Initialize client-side commands

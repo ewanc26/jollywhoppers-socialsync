@@ -2,13 +2,12 @@ package com.jollywhoppers.atproto.client
 
 import io.github.kikin81.atproto.com.atproto.identity.IdentityService
 import io.github.kikin81.atproto.com.atproto.identity.ResolveHandleRequest
-import io.github.kikin81.atproto.com.atproto.server.CreateSessionRequest
 import io.github.kikin81.atproto.com.atproto.server.CreateSessionResponse
-import io.github.kikin81.atproto.com.atproto.server.RefreshSessionRequest
 import io.github.kikin81.atproto.com.atproto.server.ServerService
-import io.github.kikin81.atproto.runtime.BearerTokenAuth
 import io.github.kikin81.atproto.runtime.NoAuth
 import io.github.kikin81.atproto.runtime.XrpcClient
+import io.github.kikin81.atproto.runtime.Handle
+import io.github.kikin81.atproto.runtime.AtIdentifier
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
@@ -76,12 +75,17 @@ class ClientAtProtoClient(
         val pdsUrl: String
     )
 
+    private val xrpcClient: XrpcClient = XrpcClient(
+        baseUrl = identityServiceUrl,
+        httpClient = httpClient,
+        authProvider = NoAuth
+    )
+
     suspend fun resolveHandle(handle: String): Result<String> = runCatching {
         logger.info("Resolving handle via official endpoint: ${sanitize(handle)}")
-        val xrpcClient = XrpcClient(identityServiceUrl, httpClient, json, NoAuth)
-        val response = IdentityService(xrpcClient).resolveHandle(ResolveHandleRequest(handle))
-        logger.info("Resolved handle to DID: ${sanitize(response.did)}")
-        response.did
+        val response = IdentityService(xrpcClient).resolveHandle(ResolveHandleRequest(handle = Handle(handle)))
+        logger.info("Resolved handle to DID: ${sanitize(response.did.toString())}")
+        response.did.toString()
     }
 
     suspend fun resolveDID(did: String): Result<String> = runCatching {
@@ -140,12 +144,32 @@ class ClientAtProtoClient(
         }
 
         logger.info("Authenticating to PDS: $pdsUrl")
-        val xrpcClient = XrpcClient(pdsUrl, httpClient, json, NoAuth)
-        val sessionResponse = ServerService(xrpcClient).createSession(CreateSessionRequest(identifier, password))
+        val pdsClient = XrpcClient(
+            baseUrl = pdsUrl,
+            httpClient = httpClient,
+            authProvider = NoAuth
+        )
+
+        val bodyJson = json.encodeToString(
+            CreateSessionRequest.serializer(),
+            CreateSessionRequest(identifier = identifier, password = password)
+        )
+
+        val response = httpClient.post("$pdsUrl/xrpc/com.atproto.server.createSession") {
+            header("Content-Type", "application/json")
+            setBody(bodyJson)
+        }
+        val responseBody = response.bodyAsText()
+
+        if (response.status.value !in 200..299) {
+            throw Exception("Session creation failed with status ${response.status.value}")
+        }
+
+        val sessionResponse = json.decodeFromString<CreateSessionResponse>(responseBody)
         logger.info("Session created successfully")
         ExtendedSessionResponse(
-            did = sessionResponse.did,
-            handle = sessionResponse.handle,
+            did = sessionResponse.did.toString(),
+            handle = sessionResponse.handle.toString(),
             email = sessionResponse.email,
             accessJwt = sessionResponse.accessJwt,
             refreshJwt = sessionResponse.refreshJwt,
@@ -155,8 +179,24 @@ class ClientAtProtoClient(
 
     suspend fun refreshSession(refreshJwt: String, pdsUrl: String): Result<CreateSessionResponse> = runCatching {
         logger.info("Refreshing session")
-        val xrpcClient = XrpcClient(pdsUrl, httpClient, json, BearerTokenAuth(refreshJwt))
-        ServerService(xrpcClient).refreshSession(RefreshSessionRequest(refreshJwt))
+
+        val bodyJson = json.encodeToString(
+            RefreshSessionRequest.serializer(),
+            RefreshSessionRequest(refreshJwt = refreshJwt)
+        )
+
+        val response = httpClient.post("$pdsUrl/xrpc/com.atproto.server.refreshSession") {
+            header("Authorization", "Bearer $refreshJwt")
+            header("Content-Type", "application/json")
+            setBody(bodyJson)
+        }
+        val responseBody = response.bodyAsText()
+
+        if (response.status.value != 200) {
+            throw Exception("Session refresh failed with status ${response.status.value}")
+        }
+
+        json.decodeFromString<CreateSessionResponse>(responseBody)
     }
 
     suspend fun xrpcRequest(
@@ -248,6 +288,17 @@ class ClientAtProtoClient(
 
         responseBody
     }
+
+    @Serializable
+    data class CreateSessionRequest(
+        val identifier: String,
+        val password: String
+    )
+
+    @Serializable
+    data class RefreshSessionRequest(
+        val refreshJwt: String
+    )
 
     class DpopNonceRequiredException(
         val nonce: String,

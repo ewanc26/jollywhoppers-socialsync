@@ -6,16 +6,20 @@ import io.github.kikin81.atproto.app.bsky.actor.ActorService
 import io.github.kikin81.atproto.app.bsky.actor.GetProfileRequest
 import io.github.kikin81.atproto.com.atproto.identity.IdentityService
 import io.github.kikin81.atproto.com.atproto.identity.ResolveHandleRequest
-import io.github.kikin81.atproto.com.atproto.server.ServerService
-import io.github.kikin81.atproto.com.atproto.server.RefreshSessionRequest as AtpRefreshSessionRequest
-import io.github.kikin81.atproto.runtime.BearerTokenAuth
+
 import io.github.kikin81.atproto.runtime.NoAuth
 import io.github.kikin81.atproto.runtime.XrpcClient
+import io.github.kikin81.atproto.runtime.AtIdentifier
+import io.github.kikin81.atproto.runtime.Handle
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.get
+import io.ktor.client.request.post
+import io.ktor.client.request.put
+import io.ktor.client.request.delete
 import io.ktor.client.request.header
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -41,15 +45,11 @@ class AtProtoClient(
             requestTimeoutMillis = 15_000
             connectTimeoutMillis = 10_000
         }
-        engine {
-            https {
-                followRedirects = false
-            }
-        }
         expectSuccess = false
     }
 
     val xrpcClient: XrpcClient = publicClient ?: XrpcClient(
+        baseUrl = fallbackPdsUrl,
         httpClient = ktorClient,
         authProvider = NoAuth
     )
@@ -110,7 +110,7 @@ class AtProtoClient(
     )
 
     @Serializable
-    data class RefreshSessionRequest(
+    data class AtpRefreshSessionRequest(
         val refreshJwt: String
     )
 
@@ -147,9 +147,9 @@ class AtProtoClient(
             logger.warn("Slingshot resolution failed, trying fallback")
         }
 
-        val resolution = IdentityService(xrpcClient).resolveHandle(ResolveHandleRequest(handle))
+        val resolution = IdentityService(xrpcClient).resolveHandle(ResolveHandleRequest(handle = Handle(handle)))
         logger.info("Resolved handle to DID")
-        resolution.did
+        resolution.did.toString()
     }
 
     suspend fun resolveDid(did: String): Result<DidDocument> = runCatching {
@@ -206,18 +206,19 @@ class AtProtoClient(
             xrpcClient
         } else {
             XrpcClient(
+                baseUrl = serviceUrl,
                 httpClient = ktorClient,
                 authProvider = NoAuth
             )
         }
 
-        val libProfile = ActorService(profileClient).getProfile(GetProfileRequest(actor))
+        val libProfile = ActorService(profileClient).getProfile(GetProfileRequest(actor = AtIdentifier(actor)))
         val profile = ProfileView(
-            did = libProfile.did,
-            handle = libProfile.handle,
+            did = libProfile.did.toString(),
+            handle = libProfile.handle.toString(),
             displayName = libProfile.displayName,
             description = libProfile.description,
-            avatar = libProfile.avatar
+            avatar = libProfile.avatar?.toString()
         )
         logger.info("Retrieved profile successfully")
         profile
@@ -226,43 +227,22 @@ class AtProtoClient(
     suspend fun refreshSession(refreshJwt: String, pdsUrl: String): Result<CreateSessionResponse> = runCatching {
         logger.info("Refreshing session")
 
-        val refreshClient = XrpcClient(
-            httpClient = ktorClient,
-            authProvider = BearerTokenAuth(refreshJwt)
-        )
+        val url = "$pdsUrl/xrpc/com.atproto.server.refreshSession"
+        validateUrl(url)
 
-        val libResponse = ServerService(refreshClient).refreshSession(
-            AtpRefreshSessionRequest(refreshJwt = refreshJwt)
-        )
+        val bodyJson = json.encodeToString(AtpRefreshSessionRequest.serializer(), AtpRefreshSessionRequest(refreshJwt = refreshJwt))
+        val response = ktorClient.post(url) {
+            header("Authorization", "Bearer $refreshJwt")
+            header("Content-Type", "application/json")
+            setBody(bodyJson)
+        }
+        val responseBody = response.bodyAsText()
 
-        CreateSessionResponse(
-            did = libResponse.did,
-            handle = libResponse.handle,
-            email = libResponse.email,
-            accessJwt = libResponse.accessJwt,
-            refreshJwt = libResponse.refreshJwt,
-            didDoc = libResponse.didDoc?.let { doc ->
-                DidDocument(
-                    id = doc.id,
-                    alsoKnownAs = doc.alsoKnownAs,
-                    verificationMethod = doc.verificationMethod?.map { vm ->
-                        VerificationMethod(
-                            id = vm.id,
-                            type = vm.type,
-                            controller = vm.controller,
-                            publicKeyMultibase = vm.publicKeyMultibase
-                        )
-                    } ?: emptyList(),
-                    service = doc.service?.map { s ->
-                        Service(
-                            id = s.id,
-                            type = s.type,
-                            serviceEndpoint = s.serviceEndpoint
-                        )
-                    } ?: emptyList()
-                )
-            }
-        )
+        if (response.status.value != 200) {
+            throw Exception("Session refresh failed")
+        }
+
+        json.decodeFromString<CreateSessionResponse>(responseBody)
     }
 
     suspend fun xrpcRequest(
@@ -272,18 +252,23 @@ class AtProtoClient(
         pdsUrl: String,
         body: String? = null
     ): Result<String> = runCatching {
-        val authClient = XrpcClient(
-            httpClient = ktorClient,
-            authProvider = BearerTokenAuth(accessJwt)
-        )
-
+        val url = "$pdsUrl/xrpc/$endpoint"
+        validateUrl(url)
         when (method.uppercase()) {
-            "GET" -> authClient.query(endpoint)
-            "POST" -> authClient.procedure(endpoint, body?.toByteArray())
-            "PUT" -> authClient.procedure(endpoint, body?.toByteArray())
-            "DELETE" -> authClient.procedure(endpoint)
+            "GET" -> ktorClient.get(url) { header("Authorization", "Bearer $accessJwt") }.bodyAsText()
+            "POST" -> ktorClient.post(url) {
+                header("Authorization", "Bearer $accessJwt")
+                header("Content-Type", "application/json")
+                setBody(body ?: "{}")
+            }.bodyAsText()
+            "PUT" -> ktorClient.put(url) {
+                header("Authorization", "Bearer $accessJwt")
+                header("Content-Type", "application/json")
+                setBody(body ?: "{}")
+            }.bodyAsText()
+            "DELETE" -> ktorClient.delete(url) { header("Authorization", "Bearer $accessJwt") }.bodyAsText()
             else -> throw IllegalArgumentException("Unsupported HTTP method")
-        }.decodeToString()
+        }
     }
 
     fun isValidDid(did: String): Boolean {
