@@ -30,7 +30,7 @@ class AtProtoClient(
 ) {
     private val logger = LoggerFactory.getLogger("atproto-connect")
 
-    private val json = Json {
+    val json = Json {
         ignoreUnknownKeys = true
         isLenient = true
         prettyPrint = false
@@ -49,7 +49,7 @@ class AtProtoClient(
         expectSuccess = false
     }
 
-    private val xrpcClient: XrpcClient = publicClient ?: XrpcClient(
+    val xrpcClient: XrpcClient = publicClient ?: XrpcClient(
         httpClient = ktorClient,
         authProvider = NoAuth
     )
