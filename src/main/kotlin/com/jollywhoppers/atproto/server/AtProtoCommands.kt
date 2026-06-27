@@ -7,6 +7,13 @@ import com.mojang.brigadier.context.CommandContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.put
+import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.commands.CommandSourceStack
 import net.minecraft.commands.Commands
 import net.minecraft.network.chat.Component
@@ -29,6 +36,8 @@ class AtProtoCommands(
     private val sessionManager: AtProtoSessionManager,
     private val syncPreferencesStore: PlayerSyncPreferencesStore,
     private val profileService: PlayerProfileService? = null,
+    private val recordManager: RecordManager? = null,
+    private val appViewService: AppViewService? = null,
 ) {
     private val logger = LoggerFactory.getLogger("atproto-connect")
     private val coroutineScope = CoroutineScope(Dispatchers.IO)
@@ -118,6 +127,21 @@ class AtProtoCommands(
                         )
                 )
                 .then(
+                    Commands.literal("export")
+                        .then(
+                            Commands.argument("player", StringArgumentType.greedyString())
+                                .executes { context -> exportPlayer(context) }
+                        )
+                )
+                .then(
+                    Commands.literal("import")
+                        .requires { source -> source.hasPermission(4) }
+                        .then(
+                            Commands.argument("url", StringArgumentType.greedyString())
+                                .executes { context -> importRecord(context) }
+                        )
+                )
+                .then(
                     Commands.literal("admin")
                         .requires { source -> source.hasPermission(4) }
                         .then(
@@ -134,6 +158,16 @@ class AtProtoCommands(
                         .then(
                             Commands.literal("status")
                                 .executes { context -> adminStatus(context) }
+                        )
+                        .then(
+                            Commands.literal("server-login")
+                                .then(
+                                    Commands.argument("identifier", StringArgumentType.string())
+                                        .then(
+                                            Commands.argument("appPassword", StringArgumentType.string())
+                                                .executes { context -> adminServerLogin(context) }
+                                        )
+                                )
                         )
                 )
                 .executes { context -> help(context) }
@@ -536,6 +570,22 @@ class AtProtoCommands(
                     .append(Component.literal("\n§f/atproto whois <player or handle>"))
                     .append(Component.literal("\n  §7Look up another player's AT Protocol identity"))
                     .append(Component.literal("\n"))
+                    .append(Component.literal("\n§f/atproto export <player>"))
+                    .append(Component.literal("\n  §7Export a player's synced AT Protocol records as JSON"))
+                    .append(Component.literal("\n"))
+                    .append(Component.literal("\n§f/atproto import <at-uri>"))
+                    .append(Component.literal("\n  §7Fetch and index an AT Protocol record (op level 4)"))
+                    .append(Component.literal("\n"))
+                    .append(Component.literal("\n§e━━━ Admin Commands (op level 4) ━━━"))
+                    .append(Component.literal("\n§f/atproto admin server-login <identifier> <app-password>"))
+                    .append(Component.literal("\n  §7Authenticate server as an AT Protocol identity"))
+                    .append(Component.literal("\n§f/atproto admin list"))
+                    .append(Component.literal("\n  §7List all linked players"))
+                    .append(Component.literal("\n§f/atproto admin remove <player>"))
+                    .append(Component.literal("\n  §7Remove a player's identity link"))
+                    .append(Component.literal("\n§f/atproto admin status"))
+                    .append(Component.literal("\n  §7Show system status"))
+                    .append(Component.literal("\n"))
                     .append(Component.literal("\n§e━━━ Client-Side Login (Type in Client) ━━━"))
                     .append(Component.literal("\n§eFor authentication, use the client-side commands:"))
                     .append(Component.literal("\n§f/atproto login <handle>"))
@@ -644,6 +694,194 @@ class AtProtoCommands(
             },
             false
         )
+        return 1
+    }
+
+    /**
+     * Authenticates the server as an AT Protocol identity (admin only).
+     * Stores the session persistently so server status sync works without needing an online player.
+     */
+    private fun adminServerLogin(context: CommandContext<CommandSourceStack>): Int {
+        val identifier = StringArgumentType.getString(context, "identifier")
+        val appPassword = StringArgumentType.getString(context, "appPassword")
+
+        context.source.sendSuccess(
+            { Component.literal("§eAuthenticating server account with AT Protocol...") },
+            false
+        )
+
+        coroutineScope.launch {
+            try {
+                val session = client.createSession(identifier, appPassword).getOrThrow()
+
+                val pdsUrl = session.didDoc?.service?.firstOrNull { it.type == "AtprotoPersonalDataServer" }?.serviceEndpoint
+                ServerAccount.setSession(session.accessJwt, session.refreshJwt, session.did, session.handle, pdsUrl)
+
+                val configDir = FabricLoader.getInstance().configDir.resolve("atproto-connect")
+                ServerAccount.save(configDir)
+
+                sessionManager.storeVerifiedSession(
+                    uuid = ServerAccount.SERVER_PLAYER_UUID,
+                    did = session.did,
+                    handle = session.handle,
+                    pdsUrl = pdsUrl ?: "https://bsky.social",
+                    accessJwt = session.accessJwt,
+                    refreshJwt = session.refreshJwt,
+                    authType = "app_password",
+                )
+
+                context.source.sendSuccess(
+                    {
+                        Component.literal("§a✓ Server authenticated as ${session.handle}")
+                            .append(Component.literal("\n§7DID: §f${session.did}"))
+                            .append(Component.literal("\n§7Server status sync will use this account"))
+                    },
+                    true
+                )
+                logger.info("Server account authenticated as ${session.handle}")
+            } catch (e: Exception) {
+                context.source.sendFailure(
+                    Component.literal("§c✗ Failed to authenticate server account")
+                        .append(Component.literal("\n§7${sanitizeError(e)}"))
+                )
+                logger.error("Failed to authenticate server account: ${e.javaClass.simpleName}")
+            }
+        }
+        return 1
+    }
+
+    /**
+     * Exports a player's synced AT Protocol records as JSON (shown in chat).
+     */
+    private fun exportPlayer(context: CommandContext<CommandSourceStack>): Int {
+        val playerName = StringArgumentType.getString(context, "player")
+        val source = context.source
+
+        coroutineScope.launch {
+            try {
+                val player = source.server.playerList.players
+                    .firstOrNull { it.name.string.equals(playerName, ignoreCase = true) }
+
+                val uuid = player?.uuid
+                    ?: identityStore.getUuidByHandle(playerName)
+                    ?: run {
+                        source.sendFailure(Component.literal("§c✗ Player not found: $playerName"))
+                        return@launch
+                    }
+
+                if (!sessionManager.hasSession(uuid)) {
+                    source.sendFailure(Component.literal("§c✗ Player has no active AT Protocol session"))
+                    return@launch
+                }
+
+                if (recordManager == null) {
+                    source.sendFailure(Component.literal("§c✗ Record manager not available"))
+                    return@launch
+                }
+
+                val collections = listOf(
+                    "com.jollywhoppers.minecraft.player.profile",
+                    "com.jollywhoppers.minecraft.player.stats",
+                    "com.jollywhoppers.minecraft.achievement",
+                    "com.jollywhoppers.minecraft.player.session",
+                )
+
+                val exportJson = buildJsonObject {
+                    put("exportedAt", java.time.Instant.now().toString())
+                    put("player", playerName)
+                    for (collection in collections) {
+                        val records = recordManager.listAllRecords(uuid, collection).getOrNull()
+                        if (records != null && records.isNotEmpty()) {
+                            put(collection, buildJsonArray {
+                                records.forEach { record ->
+                                    add(record.value)
+                                }
+                            })
+                        }
+                    }
+                }
+
+                val json = Json { prettyPrint = true }
+                val jsonString = json.encodeToString(JsonObject.serializer(), exportJson)
+
+                val truncated = if (jsonString.length > 10000) {
+                    jsonString.take(10000) + "\n... (truncated)"
+                } else {
+                    jsonString
+                }
+
+                source.sendSuccess(
+                    { Component.literal("§b━━━ Exported Records for §f$playerName §b━━━\n§7$truncated") },
+                    false
+                )
+                logger.info("Exported AT Protocol records for player $playerName")
+            } catch (e: Exception) {
+                source.sendFailure(
+                    Component.literal("§c✗ Failed to export records")
+                        .append(Component.literal("\n§7${sanitizeError(e)}"))
+                )
+                logger.error("Failed to export records", e)
+            }
+        }
+        return 1
+    }
+
+    /**
+     * Fetches an AT Protocol record by AT URI and indexes it in the local AppView (admin only).
+     */
+    private fun importRecord(context: CommandContext<CommandSourceStack>): Int {
+        val url = StringArgumentType.getString(context, "url")
+        val source = context.source
+
+        coroutineScope.launch {
+            try {
+                val components = recordManager?.parseAtUri(url)
+                    ?: run {
+                        source.sendFailure(Component.literal("§c✗ Invalid AT URI format. Expected: at://did/collection/rkey"))
+                        return@launch
+                    }
+
+                source.sendSuccess(
+                    { Component.literal("§eFetching record: ${components.did}/${components.collection}/${components.rkey}...") },
+                    false
+                )
+
+                val recordData = client.fetchRecord(components.did, components.collection, components.rkey).getOrThrow()
+
+                val json = Json { prettyPrint = true }
+                val recordJson = json.encodeToString(JsonObject.serializer(), recordData as JsonObject)
+
+                val appView = appViewService
+                if (appView != null) {
+                    appView.indexPlayerProfile(url, recordData)
+                    appView.indexPlayerStats(url, recordData)
+                    appView.indexAchievement(url, recordData)
+                }
+
+                val truncated = if (recordJson.length > 5000) {
+                    recordJson.take(5000) + "\n... (truncated)"
+                } else {
+                    recordJson
+                }
+
+                source.sendSuccess(
+                    {
+                        Component.literal("§a✓ Record imported successfully")
+                            .append(Component.literal("\n§7URI: §f$url"))
+                            .append(Component.literal("\n§7Indexed in AppView: §f${appView != null}"))
+                            .append(Component.literal("\n§7Record:\n$truncated"))
+                    },
+                    true
+                )
+                logger.info("Imported record from $url")
+            } catch (e: Exception) {
+                source.sendFailure(
+                    Component.literal("§c✗ Failed to import record")
+                        .append(Component.literal("\n§7${sanitizeError(e)}"))
+                )
+                logger.error("Failed to import record from $url", e)
+            }
+        }
         return 1
     }
 

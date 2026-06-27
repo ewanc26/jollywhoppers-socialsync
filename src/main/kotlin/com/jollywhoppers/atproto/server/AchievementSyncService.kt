@@ -10,6 +10,7 @@ import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
 import com.jollywhoppers.atproto.server.ServerIdentity
 import com.jollywhoppers.atproto.server.model.Achievement
+import com.jollywhoppers.atproto.server.AchievementSyncStore
 
 /**
  * Syncs Minecraft advancements (achievements) to AT Protocol records.
@@ -19,12 +20,11 @@ class AchievementSyncService(
     private val sessionManager: AtProtoSessionManager,
     private val identityStore: PlayerIdentityStore,
     private val syncPreferencesStore: PlayerSyncPreferencesStore,
+    private val achievementSyncStore: AchievementSyncStore,
 ) {
     private val logger = LoggerFactory.getLogger("atproto-connect:achievements")
     private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val json = Json { ignoreUnknownKeys = true }
-
-    private val syncedAdvancements = ConcurrentHashMap<UUID, MutableSet<String>>()
 
     companion object {
         private const val COLLECTION_ID = "com.jollywhoppers.minecraft.achievement"
@@ -46,10 +46,9 @@ class AchievementSyncService(
                 return@launch
             }
 
-            // Dedup: check if already synced this session
+            // Dedup: check if already synced
             val advancementId = advancement.id().toString()
-            val playerSynced = syncedAdvancements.getOrPut(uuid) { ConcurrentHashMap.newKeySet() }
-            if (!playerSynced.add(advancementId)) {
+            if (achievementSyncStore.isSynced(uuid, advancementId)) {
                 logger.debug("Already synced advancement $advancementId for ${player.name.string}")
                 return@launch
             }
@@ -79,10 +78,11 @@ class AchievementSyncService(
                     record = json.encodeToJsonElement(Achievement.serializer(), record).jsonObject,
                 ).getOrThrow()
 
+                achievementSyncStore.markSynced(uuid, advancementId)
                 logger.info("Synced achievement '$advancementName' for ${player.name.string} ($uuid)")
             } catch (e: Exception) {
                 logger.error("Failed to sync achievement '$advancementId' for ${player.name.string} ($uuid)", e)
-                playerSynced.remove(advancementId)
+                achievementSyncStore.removeSynced(uuid, advancementId)
             }
         }
     }

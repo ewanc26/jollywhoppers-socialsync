@@ -60,6 +60,7 @@ dependencies {
 	implementation "io.github.kikin81.atproto:models:${project.atproto_kotlin_version}"
 	implementation "io.github.kikin81.atproto:oauth:${project.atproto_kotlin_version}"
 	implementation "io.ktor:ktor-client-cio:${project.ktor_version}"
+	implementation "io.ktor:ktor-client-websockets:${project.ktor_version}"
 
 	// Ktor server for AppView HTTP API
 	implementation "io.ktor:ktor-server-cio:${project.ktor_version}"

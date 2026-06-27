@@ -1,6 +1,8 @@
 package com.jollywhoppers
 
 import com.jollywhoppers.atproto.server.AchievementSyncService
+import com.jollywhoppers.atproto.server.AchievementSyncStore
+import com.jollywhoppers.atproto.server.AppViewService
 import com.jollywhoppers.atproto.server.AtProtoClient
 import com.jollywhoppers.atproto.server.AtProtoCommands
 import com.jollywhoppers.atproto.server.AtProtoSessionManager
@@ -10,8 +12,14 @@ import com.jollywhoppers.atproto.server.PlayerSessionSyncService
 import com.jollywhoppers.atproto.server.PlayerStatSyncService
 import com.jollywhoppers.atproto.server.PlayerSyncPreferencesStore
 import com.jollywhoppers.atproto.server.RecordManager
+import com.jollywhoppers.atproto.server.ServerAccount
 import com.jollywhoppers.atproto.server.ServerStatusSyncService
+import com.jollywhoppers.atproto.server.AppViewHttpServer
+import com.jollywhoppers.atproto.server.FirehoseSubscriber
 import com.jollywhoppers.security.SecurityAuditor
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import net.fabricmc.api.ModInitializer
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
@@ -54,6 +62,12 @@ object socialsync : ModInitializer {
     lateinit var serverStatusSyncService: ServerStatusSyncService
         private set
 
+    lateinit var firehoseSubscriber: FirehoseSubscriber
+        private set
+
+    lateinit var appViewServer: AppViewHttpServer
+        private set
+
     lateinit var syncPreferencesStore: PlayerSyncPreferencesStore
         private set
 
@@ -76,6 +90,10 @@ object socialsync : ModInitializer {
             SecurityAuditor.initialize(configDir)
             logger.info("Security auditor initialized")
 
+            // Initialize server account for standalone auth
+            ServerAccount.load(configDir)
+            logger.info("Server account loaded (configured: ${ServerAccount.isConfigured()})")
+
             // Initialize AT Protocol client with Slingshot for PDS resolution
             atProtoClient = AtProtoClient(
                 slingshotUrl = "https://slingshot.microcosm.blue",
@@ -92,6 +110,24 @@ object socialsync : ModInitializer {
             val sessionStorePath = configDir.resolve("player-sessions.json")
             sessionManager = AtProtoSessionManager(sessionStorePath, atProtoClient)
             logger.info("Session manager initialized with encryption at: $sessionStorePath")
+
+            // If a server account is configured, register its session in the session manager
+            if (ServerAccount.isConfigured()) {
+                val sessionResult = ServerAccount.getSession()
+                if (sessionResult.isSuccess) {
+                    val serverSession = sessionResult.getOrThrow()
+                    sessionManager.storeVerifiedSession(
+                        uuid = ServerAccount.SERVER_PLAYER_UUID,
+                        did = serverSession.did,
+                        handle = serverSession.handle,
+                        pdsUrl = "https://bsky.social",
+                        accessJwt = serverSession.accessJwt,
+                        refreshJwt = serverSession.refreshJwt,
+                        authType = "app_password",
+                    )
+                    logger.info("Server account session registered for ${serverSession.handle}")
+                }
+            }
 
 			// Initialize record manager (uses kikin81 RepoService)
 			recordManager = RecordManager(atProtoClient.xrpcClient, atProtoClient.json, sessionManager)
@@ -124,12 +160,18 @@ object socialsync : ModInitializer {
                 syncPreferencesStore = syncPreferencesStore,
             )
 
+            // Initialize achievement sync store
+            val achievementSyncStorePath = configDir.resolve("achievement-sync-state.json")
+            val achievementSyncStore = AchievementSyncStore(achievementSyncStorePath)
+            logger.info("Achievement sync store initialized at: $achievementSyncStorePath")
+
             // Initialize achievement sync service
             achievementSyncService = AchievementSyncService(
                 recordManager = recordManager,
                 sessionManager = sessionManager,
                 identityStore = identityStore,
                 syncPreferencesStore = syncPreferencesStore,
+                achievementSyncStore = achievementSyncStore,
             )
             AchievementSyncService.INSTANCE = achievementSyncService
             logger.info("Achievement sync service initialized")
@@ -152,8 +194,21 @@ object socialsync : ModInitializer {
             )
             logger.info("Server status sync service initialized")
 
+            // Initialize AppView service for data indexing
+            val appViewService = AppViewService(recordManager)
+
+            // Initialize firehose subscriber for real-time data ingestion
+            firehoseSubscriber = FirehoseSubscriber(appViewService)
+            firehoseSubscriber.start()
+            logger.info("Firehose subscriber started")
+
+            // Start AppView HTTP server for external queries
+            appViewServer = AppViewHttpServer(appViewService)
+            appViewServer.start()
+            logger.info("AppView HTTP server started")
+
             // Initialize command handler (with rate limiting and audit logging)
-            commands = AtProtoCommands(atProtoClient, identityStore, sessionManager, syncPreferencesStore, profileService)
+            commands = AtProtoCommands(atProtoClient, identityStore, sessionManager, syncPreferencesStore, profileService, recordManager, appViewService)
 
             // Register commands
             CommandRegistrationCallback.EVENT.register { dispatcher, _, _ ->
@@ -271,6 +326,14 @@ object socialsync : ModInitializer {
 
             if (::achievementSyncService.isInitialized) {
                 achievementSyncService.shutdown()
+            }
+
+            if (::firehoseSubscriber.isInitialized) {
+                firehoseSubscriber.shutdown()
+            }
+
+            if (::appViewServer.isInitialized) {
+                appViewServer.stop()
             }
 
             // Shutdown scheduler

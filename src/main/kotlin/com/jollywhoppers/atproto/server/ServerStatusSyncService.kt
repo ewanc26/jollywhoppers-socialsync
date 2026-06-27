@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory
 import java.security.MessageDigest
 import java.time.Instant
 import java.util.UUID
+import com.jollywhoppers.atproto.server.ServerAccount
 
 /**
  * Periodically syncs server status to AT Protocol.
@@ -36,24 +37,31 @@ class ServerStatusSyncService(
     companion object {
         private const val COLLECTION_ID = "com.jollywhoppers.minecraft.server.status"
         private const val RKEY = "self"
+        val SERVER_UUID: UUID = ServerAccount.SERVER_PLAYER_UUID
     }
 
     /**
      * Called periodically to sync server status.
-     * Only syncs if there's at least one authenticated player online.
+     * Uses ServerAccount if configured, otherwise falls back to finding an authenticated player.
      */
     fun onSyncTick(server: MinecraftServer) {
         if (!server.isRunning || server.isStopped) return
 
-        // Find an authenticated player who has consented to server status syncing
-        val authenticatedPlayer = server.playerList.players.firstOrNull { player ->
-            identityStore.isLinked(player.uuid)
-                && sessionManager.hasSession(player.uuid)
-                && syncPreferencesStore.getOrDefault(player.uuid).shouldSync("server_status")
+        val playerUuid: UUID?
+
+        if (ServerAccount.isConfigured() && ServerAccount.getSession().isSuccess) {
+            playerUuid = SERVER_UUID
+        } else {
+            val authenticatedPlayer = server.playerList.players.firstOrNull { player ->
+                identityStore.isLinked(player.uuid)
+                    && sessionManager.hasSession(player.uuid)
+                    && syncPreferencesStore.getOrDefault(player.uuid).shouldSync("server_status")
+            }
+            playerUuid = authenticatedPlayer?.uuid
         }
 
-        if (authenticatedPlayer == null) {
-            logger.debug("Skipping server status sync: no authenticated players with server_status consent online")
+        val uuid = playerUuid ?: run {
+            logger.debug("Skipping server status sync: no server account and no authenticated players with server_status consent online")
             return
         }
 
@@ -61,7 +69,7 @@ class ServerStatusSyncService(
             try {
                 val status = buildStatus(server)
                 recordManager.putTypedRecord(
-                    playerUuid = authenticatedPlayer.uuid,
+                    playerUuid = uuid,
                     collection = COLLECTION_ID,
                     rkey = RKEY,
                     record = status,

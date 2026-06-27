@@ -15,6 +15,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.get
+import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.put
 import io.ktor.client.request.delete
@@ -23,6 +24,8 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import org.slf4j.LoggerFactory
 import java.net.InetAddress
 import java.net.URI
@@ -107,6 +110,12 @@ class AtProtoClient(
         val accessJwt: String,
         val refreshJwt: String,
         val didDoc: DidDocument? = null
+    )
+
+    @Serializable
+    data class CreateSessionRequest(
+        val identifier: String,
+        val password: String
     )
 
     @Serializable
@@ -243,6 +252,38 @@ class AtProtoClient(
         }
 
         json.decodeFromString<CreateSessionResponse>(responseBody)
+    }
+
+    suspend fun createSession(identifier: String, password: String): Result<CreateSessionResponse> = runCatching {
+        val url = "$fallbackPdsUrl/xrpc/com.atproto.server.createSession"
+        validateUrl(url)
+
+        val bodyJson = json.encodeToString(CreateSessionRequest.serializer(), CreateSessionRequest(identifier = identifier, password = password))
+        val response = ktorClient.post(url) {
+            header("Content-Type", "application/json")
+            setBody(bodyJson)
+        }
+        val responseBody = response.bodyAsText()
+
+        if (response.status.value != 200) {
+            throw Exception("Session creation failed")
+        }
+
+        json.decodeFromString<CreateSessionResponse>(responseBody)
+    }
+
+    suspend fun fetchRecord(did: String, collection: String, rkey: String): Result<JsonElement> = runCatching {
+        val url = "$fallbackPdsUrl/xrpc/com.atproto.repo.getRecord?repo=${encodeURIComponent(did)}&collection=${encodeURIComponent(collection)}&rkey=${encodeURIComponent(rkey)}"
+        validateUrl(url)
+        val response = ktorClient.get(url) {
+            header("Content-Type", "application/json")
+        }
+        val body = response.bodyAsText()
+        if (response.status.value != 200) {
+            throw Exception("Record fetch failed")
+        }
+        val jsonObj = json.decodeFromString<JsonObject>(body)
+        jsonObj["value"] ?: throw Exception("No value in record response")
     }
 
     suspend fun xrpcRequest(
