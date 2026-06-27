@@ -127,6 +127,13 @@ class AtProtoCommands(
                         )
                 )
                 .then(
+                    Commands.literal("profile")
+                        .then(
+                            Commands.argument("player", StringArgumentType.greedyString())
+                                .executes { context -> viewPlayerProfile(context) }
+                        )
+                )
+                .then(
                     Commands.literal("export")
                         .then(
                             Commands.argument("player", StringArgumentType.greedyString())
@@ -168,6 +175,14 @@ class AtProtoCommands(
                                                 .executes { context -> adminServerLogin(context) }
                                         )
                                 )
+                        )
+                        .then(
+                            Commands.literal("sync-stats")
+                                .executes { context -> adminForceSyncStats(context) }
+                        )
+                        .then(
+                            Commands.literal("sync-server")
+                                .executes { context -> adminForceSyncServer(context) }
                         )
                 )
                 .executes { context -> help(context) }
@@ -367,12 +382,28 @@ class AtProtoCommands(
 
                 if (identity != null) {
                     val linkedAgo = formatTimeSince(identity.linkedAt)
-                    player.sendSystemMessage(
-                        Component.literal("§b━━━ AT Protocol Identity ━━━")
-                            .append(Component.literal("\n§7Handle: §f${identity.handle}"))
-                            .append(Component.literal("\n§7DID: §f${identity.did}"))
-                            .append(Component.literal("\n§7Linked: §f$linkedAgo ago"))
-                    )
+                    val baseComponent = Component.literal("§b━━━ AT Protocol Identity ━━━")
+                        .append(Component.literal("\n§7Handle: §f${identity.handle}"))
+                        .append(Component.literal("\n§7DID: §f${identity.did}"))
+                        .append(Component.literal("\n§7Linked: §f$linkedAgo ago"))
+
+                    val appView = appViewService
+                    if (appView != null) {
+                        val profileResult = appView.getPlayerProfile(identity.uuid)
+                        val profileWithStats = profileResult.getOrNull()
+                        if (profileWithStats != null) {
+                            profileWithStats.profile.bio?.let { bio ->
+                                baseComponent.append(Component.literal("\n§7Bio: §d$bio"))
+                            }
+                            profileWithStats.latestStats?.let { stats ->
+                                baseComponent.append(Component.literal("\n§7Level: §a${stats.level}"))
+                                baseComponent.append(Component.literal("\n§7Playtime: §a${stats.playtimeMinutes}m"))
+                                baseComponent.append(Component.literal("\n§7Gamemode: §a${stats.gamemode}"))
+                                baseComponent.append(Component.literal("\n§7Server: §f${stats.server}"))
+                            }
+                        }
+                    }
+                    player.sendSystemMessage(baseComponent)
                 } else {
                     player.sendSystemMessage(
                         Component.literal("§c✗ No linked AT Protocol identity found for: $identifier")
@@ -487,6 +518,7 @@ class AtProtoCommands(
 
         syncPreferencesStore.update(
             playerId = player.uuid,
+            username = player.name.string,
             stats = syncStats,
             sessions = syncSessions,
             achievements = syncAchievements,
@@ -751,6 +783,43 @@ class AtProtoCommands(
     }
 
     /**
+     * Diagnostic admin command to force immediate stats evaluation for all online players.
+     */
+    private fun adminForceSyncStats(context: CommandContext<CommandSourceStack>): Int {
+        val source = context.source
+        val server = source.server
+        
+        source.sendSuccess({ Component.literal("§e[Admin] Triggering immediate stat sync check for all online players...") }, true)
+        try {
+            // Retrieve stat sync service directly via the singleton/registered instance in socialsync initializer
+            com.jollywhoppers.socialsync.statSyncService.onServerTick(server)
+            source.sendSuccess({ Component.literal("§a✓ Stat sync check completed successfully.") }, true)
+        } catch (e: Exception) {
+            source.sendFailure(Component.literal("§c✗ Failed to execute stat sync: ${e.message}"))
+            logger.error("Admin stats force sync failed", e)
+        }
+        return 1
+    }
+
+    /**
+     * Diagnostic admin command to force immediate server status evaluation.
+     */
+    private fun adminForceSyncServer(context: CommandContext<CommandSourceStack>): Int {
+        val source = context.source
+        val server = source.server
+        
+        source.sendSuccess({ Component.literal("§e[Admin] Triggering immediate server status sync...") }, true)
+        try {
+            com.jollywhoppers.socialsync.serverStatusSyncService.onSyncTick(server)
+            source.sendSuccess({ Component.literal("§a✓ Server status sync completed successfully.") }, true)
+        } catch (e: Exception) {
+            source.sendFailure(Component.literal("§c✗ Failed to execute server sync: ${e.message}"))
+            logger.error("Admin server status force sync failed", e)
+        }
+        return 1
+    }
+
+    /**
      * Exports a player's synced AT Protocol records as JSON (shown in chat).
      */
     private fun exportPlayer(context: CommandContext<CommandSourceStack>): Int {
@@ -882,6 +951,73 @@ class AtProtoCommands(
                 logger.error("Failed to import record from $url", e)
             }
         }
+        return 1
+    }
+
+    /**
+     * Queries and displays detailed profile bio and synced stats for a player in game chat.
+     */
+    private fun viewPlayerProfile(context: CommandContext<CommandSourceStack>): Int {
+        val identifier = StringArgumentType.getString(context, "player")
+        val source = context.source
+
+        coroutineScope.launch {
+            try {
+                val minecraftPlayer = source.server.playerList.players
+                    .firstOrNull { it.name.string.equals(identifier, ignoreCase = true) }
+
+                val uuid = if (minecraftPlayer != null) {
+                    minecraftPlayer.uuid
+                } else {
+                    identityStore.getUuidByHandle(identifier)
+                        ?: identityStore.getUuidByDid(identifier)
+                        ?: run {
+                            source.sendFailure(Component.literal("§c✗ Player identity or link not found for: $identifier"))
+                            return@launch
+                        }
+                }
+
+                val identity = identityStore.getIdentity(uuid) ?: run {
+                    source.sendFailure(Component.literal("§c✗ Player has no identity link"))
+                    return@launch
+                }
+
+                val appView = appViewService
+                if (appView == null) {
+                    source.sendFailure(Component.literal("§c✗ AppView service not available"))
+                    return@launch
+                }
+
+                val profileResult = appView.getPlayerProfile(uuid.toString())
+                val profileWithStats = profileResult.getOrNull()
+
+                if (profileWithStats != null) {
+                    val component = Component.literal("§b━━━ Profile: ${profileWithStats.profile.displayName ?: identity.handle} ━━━")
+                        .append(Component.literal("\n§7Handle: §f${identity.handle}"))
+                        .append(Component.literal("\n§7DID: §f${identity.did}"))
+                    
+                    profileWithStats.profile.bio?.let { bio ->
+                        component.append(Component.literal("\n§7Bio: §d$bio"))
+                    }
+
+                    profileWithStats.latestStats?.let { stats ->
+                        component.append(Component.literal("\n§7Level: §a${stats.level}"))
+                        component.append(Component.literal("\n§7Playtime: §a${stats.playtimeMinutes}m"))
+                        component.append(Component.literal("\n§7Gamemode: §a${stats.gamemode}"))
+                        component.append(Component.literal("\n§7Last Synced Server: §f${stats.server}"))
+                        component.append(Component.literal("\n§7Synced At: §7${stats.syncedAt}"))
+                    }
+
+                    component.append(Component.literal("\n§7Synced Achievements: §e${profileWithStats.achievementCount}"))
+                    source.sendSuccess({ component }, false)
+                } else {
+                    source.sendFailure(Component.literal("§c✗ No synced profile records found in AppView index for ${identity.handle}"))
+                }
+            } catch (e: Exception) {
+                source.sendFailure(Component.literal("§c✗ Error viewing profile: ${sanitizeError(e)}"))
+            }
+        }
+
         return 1
     }
 

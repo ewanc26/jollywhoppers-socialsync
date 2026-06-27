@@ -71,6 +71,7 @@ object ServerNetworkHandlers {
                     // Update sync preferences
                     PlayerSyncPreferencesStore.update(
                         playerId = playerId,
+                        username = player.name.string,
                         stats = packet.syncStatsEnabled,
                         sessions = packet.syncSessionsEnabled,
                         achievements = packet.syncAchievementsEnabled,

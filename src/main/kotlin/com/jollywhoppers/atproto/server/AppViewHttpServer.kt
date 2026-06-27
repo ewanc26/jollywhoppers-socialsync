@@ -45,6 +45,34 @@ class AppViewHttpServer(
             }
 
             routing {
+                get("/") {
+                    val htmlStream = this::class.java.classLoader.getResourceAsStream("assets/index.html")
+                    if (htmlStream != null) {
+                        call.respondText(
+                            contentType = ContentType.Text.Html,
+                            text = htmlStream.bufferedReader().readText()
+                        )
+                    } else {
+                        call.respondText(
+                            status = io.ktor.http.HttpStatusCode.NotFound,
+                            text = "Dashboard file not found"
+                        )
+                    }
+                }
+                get("/dashboard") {
+                    val htmlStream = this::class.java.classLoader.getResourceAsStream("assets/index.html")
+                    if (htmlStream != null) {
+                        call.respondText(
+                            contentType = ContentType.Text.Html,
+                            text = htmlStream.bufferedReader().readText()
+                        )
+                    } else {
+                        call.respondText(
+                            status = io.ktor.http.HttpStatusCode.NotFound,
+                            text = "Dashboard file not found"
+                        )
+                    }
+                }
                 get("/health") {
                     call.respondText(
                         contentType = ContentType.Application.Json,
