@@ -36,8 +36,8 @@ import java.util.concurrent.ConcurrentHashMap
  * - Player reconnecting quickly: each join/leave is a separate session
  */
 class PlayerSessionSyncService(
-    private val recordManager: uk.ewancroft.atpkt.core.RecordManager,
-    private val sessionManager: uk.ewancroft.atpkt.core.AtProtoSessionManager,
+    private val recordManager: RecordManager,
+    private val sessionManager: AtProtoSessionManager,
     private val identityStore: PlayerIdentityStore,
     private val syncPreferencesStore: PlayerSyncPreferencesStore,
 ) {

@@ -3,68 +3,6 @@ package com.jollywhoppers.atproto.oauth
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-/**
- * Data models for ATProto OAuth flows.
- *
- * These models represent the various requests and responses involved in:
- * - Authorization server metadata discovery
- * - Pushed Authorization Requests (PAR)
- * - Token exchange (authorization code → access + refresh tokens)
- * - Token refresh
- * - Client metadata
- */
-
-// ============================================================================
-// AUTHORIZATION SERVER METADATA
-// ============================================================================
-
-/**
- * Authorization server metadata per RFC 8414 and ATProto OAuth extensions.
- * Fetched from the PDS or entryway to discover OAuth endpoints.
- */
-@Serializable
-data class AuthorizationServerMetadata(
-    val issuer: String,
-    @SerialName("authorization_endpoint") val authorizationEndpoint: String,
-    @SerialName("token_endpoint") val tokenEndpoint: String,
-    @SerialName("pushed_authorization_request_endpoint") val parEndpoint: String? = null,
-    @SerialName("revocation_endpoint") val revocationEndpoint: String? = null,
-    @SerialName("introspection_endpoint") val introspectionEndpoint: String? = null,
-    @SerialName("scopes_supported") val scopesSupported: List<String>? = null,
-    @SerialName("code_challenge_methods_supported") val codeChallengeMethodsSupported: List<String>? = null,
-    @SerialName("response_types_supported") val responseTypesSupported: List<String>? = null,
-    @SerialName("grant_types_supported") val grantTypesSupported: List<String>? = null,
-    @SerialName("token_endpoint_auth_methods_supported") val tokenEndpointAuthMethodsSupported: List<String>? = null,
-    @SerialName("dpop_signing_alg_values_supported") val dpopSigningAlgValuesSupported: List<String>? = null,
-)
-
-// ============================================================================
-// RESOURCE SERVER METADATA (PDS)
-// ============================================================================
-
-/**
- * Resource server metadata for a PDS.
- * Used to discover the authorization server for a given PDS.
- */
-@Serializable
-data class ResourceServerMetadata(
-    val issuer: String,
-    @SerialName("authorization_servers") val authorizationServers: List<String>? = null,
-    @SerialName("token_endpoint") val tokenEndpoint: String? = null,
-    @SerialName("pushed_authorization_request_endpoint") val parEndpoint: String? = null,
-)
-
-// ============================================================================
-// CLIENT METADATA
-// ============================================================================
-
-/**
- * OAuth client metadata document.
- * Published at the client_id URL and fetched by the authorization server.
- *
- * For localhost development, ATProto supports `http://localhost` as a client_id
- * with virtual metadata constructed from query parameters.
- */
 @Serializable
 data class OAuthClientMetadata(
     @SerialName("client_id") val clientId: String,
@@ -82,15 +20,6 @@ data class OAuthClientMetadata(
     @SerialName("policy_uri") val policyUri: String? = null,
 )
 
-// ============================================================================
-// PUSHED AUTHORIZATION REQUEST (PAR)
-// ============================================================================
-
-/**
- * PAR request body.
- * Sent to the PAR endpoint to register the authorization parameters
- * before redirecting the user to the authorization endpoint.
- */
 @Serializable
 data class ParRequest(
     @SerialName("response_type") val responseType: String = "code",
@@ -103,23 +32,12 @@ data class ParRequest(
     @SerialName("login_hint") val loginHint: String? = null,
 )
 
-/**
- * PAR response.
- * Returns a request_uri that is used in the authorization redirect.
- */
 @Serializable
 data class ParResponse(
     @SerialName("request_uri") val requestUri: String,
     val expires: Int? = null,
 )
 
-// ============================================================================
-// TOKEN EXCHANGE
-// ============================================================================
-
-/**
- * Token request body for exchanging an authorization code for tokens.
- */
 @Serializable
 data class TokenRequest(
     @SerialName("grant_type") val grantType: String = "authorization_code",
@@ -129,10 +47,6 @@ data class TokenRequest(
     @SerialName("client_id") val clientId: String,
 )
 
-/**
- * Token response containing access and refresh tokens.
- * The `sub` field contains the account DID and must be verified.
- */
 @Serializable
 data class TokenResponse(
     @SerialName("access_token") val accessToken: String,
@@ -143,13 +57,6 @@ data class TokenResponse(
     val sub: String? = null,
 )
 
-// ============================================================================
-// TOKEN REFRESH
-// ============================================================================
-
-/**
- * Token refresh request body.
- */
 @Serializable
 data class TokenRefreshRequest(
     @SerialName("grant_type") val grantType: String = "refresh_token",
@@ -157,14 +64,6 @@ data class TokenRefreshRequest(
     @SerialName("client_id") val clientId: String,
 )
 
-// ============================================================================
-// OAUTH SESSION
-// ============================================================================
-
-/**
- * A complete OAuth session, including tokens, key material, and metadata.
- * Stored persistently and used for all authenticated requests.
- */
 data class OAuthSession(
     val did: String,
     val handle: String,
@@ -194,13 +93,6 @@ data class OAuthSession(
     }
 }
 
-// ============================================================================
-// OAUTH ERROR
-// ============================================================================
-
-/**
- * OAuth error response per RFC 6749 §5.2.
- */
 @Serializable
 data class OAuthError(
     val error: String,

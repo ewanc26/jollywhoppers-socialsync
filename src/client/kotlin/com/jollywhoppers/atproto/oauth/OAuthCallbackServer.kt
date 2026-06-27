@@ -7,20 +7,6 @@ import java.net.InetSocketAddress
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 
-/**
- * Lightweight localhost HTTP server that captures the OAuth redirect callback.
- *
- * ATProto OAuth supports `http://localhost` as a client_id for development
- * and desktop apps. This server listens on a random available port, captures
- * the authorization code from the redirect, and returns a simple HTML page
- * telling the user to return to Minecraft.
- *
- * Lifecycle:
- * 1. Start the server before opening the browser
- * 2. User authenticates in browser → browser redirects here with ?code=...
- * 3. Server captures the code and stops
- * 4. Caller retrieves the code via [awaitCode]
- */
 class OAuthCallbackServer {
     private val logger = LoggerFactory.getLogger("atproto-connect:oauth-callback")
     private var server: HttpServer? = null
@@ -28,15 +14,11 @@ class OAuthCallbackServer {
     private val codeFuture = CompletableFuture<String>()
     private val errorFuture = CompletableFuture<String>()
 
-    /**
-     * Starts the callback server on a random available port.
-     * @return The port the server is listening on
-     */
     fun start(): Int {
         val httpServer = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
         httpServer.createContext("/oauth/callback") { exchange -> handleCallback(exchange) }
         httpServer.createContext("/") { exchange -> handleRoot(exchange) }
-        httpServer.executor = null // use calling thread (simple enough for a one-shot server)
+        httpServer.executor = null
         httpServer.start()
 
         server = httpServer
@@ -45,16 +27,8 @@ class OAuthCallbackServer {
         return port
     }
 
-    /**
-     * The redirect URI that should be registered with the OAuth flow.
-     */
     fun getRedirectUri(): String = "http://127.0.0.1:$port/oauth/callback"
 
-    /**
-     * Waits for the authorization code from the callback.
-     * @param timeoutSeconds Maximum time to wait
-     * @return The authorization code, or null on timeout
-     */
     fun awaitCode(timeoutSeconds: Long = 300): String? {
         return try {
             codeFuture.get(timeoutSeconds, TimeUnit.SECONDS)
@@ -67,9 +41,6 @@ class OAuthCallbackServer {
         }
     }
 
-    /**
-     * Checks if an OAuth error was received instead of a code.
-     */
     fun awaitError(timeoutSeconds: Long = 300): String? {
         return try {
             errorFuture.get(1, TimeUnit.SECONDS)
@@ -78,19 +49,12 @@ class OAuthCallbackServer {
         }
     }
 
-    /**
-     * Stops the callback server.
-     */
     fun stop() {
         server?.stop(0)
         server = null
         logger.info("OAuth callback server stopped")
     }
 
-    /**
-     * Handles the OAuth redirect callback.
-     * Extracts the authorization code or error from query parameters.
-     */
     private fun handleCallback(exchange: HttpExchange) {
         val query = exchange.requestURI.query ?: ""
         val params = parseQuery(query)
@@ -148,13 +112,9 @@ class OAuthCallbackServer {
         exchange.responseBody.write(responseBytes)
         exchange.responseBody.close()
 
-        // Stop the server after handling the callback
         stop()
     }
 
-    /**
-     * Handles requests to the root path with a simple status page.
-     */
     private fun handleRoot(exchange: HttpExchange) {
         val response = """
         <!DOCTYPE html>
@@ -174,9 +134,6 @@ class OAuthCallbackServer {
         exchange.responseBody.close()
     }
 
-    /**
-     * Parses URL query parameters into a map.
-     */
     private fun parseQuery(query: String): Map<String, String> {
         return query.split("&")
             .filter { it.contains("=") }
