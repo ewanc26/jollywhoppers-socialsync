@@ -1,10 +1,6 @@
 package com.jollywhoppers.atproto.server
 
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -116,6 +112,14 @@ class PlayerProfileService(
     }
 
     fun shutdown() {
-        coroutineScope.cancel()
+        try {
+            runBlocking {
+                withTimeout(5000) {
+                    coroutineScope.coroutineContext[Job]?.children?.forEach { it.join() }
+                }
+            }
+        } catch (e: TimeoutCancellationException) {
+            logger.warn("Timeout while shutting down ${this::class.simpleName}")
+        }
     }
 }

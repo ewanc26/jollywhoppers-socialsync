@@ -14,6 +14,7 @@ import kotlinx.coroutines.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
+import com.jollywhoppers.atproto.server.ServerIdentity
 import com.jollywhoppers.atproto.server.model.Stats
 
 /**
@@ -31,6 +32,10 @@ class PlayerStatSyncService(
     private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val syncStateStore = PlayerStatSyncStore(storageFile)
     private val activeSyncs = ConcurrentHashMap.newKeySet<UUID>()
+    private val sessionCache = ConcurrentHashMap<UUID, Result<*>>()
+
+    @Volatile
+    private var lastCacheRefreshTime = 0L
 
     private val json = Json {
         prettyPrint = false
@@ -51,6 +56,8 @@ class PlayerStatSyncService(
         val currentTick = server.tickCount.toLong()
         if (currentTick < nextEvaluationTick) return
         nextEvaluationTick = currentTick + syncIntervalTicks
+
+        refreshSessionCache(server)
 
         server.playerList.players
             .mapNotNull { player -> buildSnapshot(server, player) }
@@ -85,16 +92,25 @@ class PlayerStatSyncService(
         }
     }
 
+    private fun refreshSessionCache(server: MinecraftServer) {
+        val now = System.currentTimeMillis()
+        if (now - lastCacheRefreshTime < 30_000) return
+        lastCacheRefreshTime = now
+        coroutineScope.launch {
+            val players = server.playerList.players
+            for (player in players) {
+                if (identityStore.isLinked(player.uuid)) {
+                    sessionCache[player.uuid] = sessionManager.getSession(player.uuid)
+                }
+            }
+        }
+    }
+
     private fun buildSnapshot(server: MinecraftServer, player: ServerPlayer): StatsSnapshot? {
         if (!identityStore.isLinked(player.uuid)) return null
         
-        // Asynchronous session check, as getSession is a suspend function.
-        // buildSnapshot needs to be converted to handle async session resolution or pre-check.
-        // For now, we will perform a blocking check if needed or return null.
-        val sessionValid = runBlocking {
-            sessionManager.getSession(player.uuid).isSuccess
-        }
-        if (!sessionValid) return null
+        val cachedSession = sessionCache[player.uuid]
+        if (cachedSession == null || !cachedSession.isSuccess) return null
         
         if (!syncPreferencesStore.getOrDefault(player.uuid).shouldSync("stats")) return null
 
@@ -108,7 +124,7 @@ class PlayerStatSyncService(
 
         val record = Stats(
             player = buildJsonObject { put("uuid", player.uuid.toString()); put("username", player.name.string) },
-            server = buildJsonObject { put("serverId", buildServerId(server)) },
+            server = buildJsonObject { put("serverId", ServerIdentity.buildServerId()) },
             statistics = orderedStatistics.map { 
                 buildJsonObject { put("key", it.key); put("value", it.value.toLong()); put("category", it.category) } 
             },
@@ -142,12 +158,6 @@ class PlayerStatSyncService(
         return entries
     }
 
-    private fun buildServerId(server: MinecraftServer): String {
-        val payload = "socialsync:" + server.getServerDirectory().toAbsolutePath().normalize().toString()
-        return MessageDigest.getInstance("SHA-256").digest(payload.toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
-    }
-
     private fun mapGameMode(player: ServerPlayer) = player.gameMode.getGameModeForPlayer().name.lowercase()
 
     private fun computeFingerprint(stats: List<StatisticEntry>, playtime: Int, player: ServerPlayer): String {
@@ -161,7 +171,17 @@ class PlayerStatSyncService(
         return playTicks / (20 * 60)
     }
 
-    fun shutdown() = coroutineScope.cancel()
+    fun shutdown() {
+        try {
+            runBlocking {
+                withTimeout(5000) {
+                    coroutineScope.coroutineContext[Job]?.children?.forEach { it.join() }
+                }
+            }
+        } catch (e: TimeoutCancellationException) {
+            logger.warn("Timeout while shutting down ${this::class.simpleName}")
+        }
+    }
 
     data class SnapshotPlayer(val uuid: UUID, val username: String)
     data class StatsSnapshot(val player: SnapshotPlayer, val record: Stats, val fingerprint: String)
