@@ -10,11 +10,12 @@ import kotlinx.serialization.json.Json
 import net.fabricmc.loader.api.FabricLoader
 import org.slf4j.LoggerFactory
 import java.nio.file.Files
-import java.time.Instant
-import java.util.UUID
+import java.nio.file.Path
 import kotlin.io.path.exists
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
+import java.time.Instant
+import java.util.UUID
 
 /**
  * Server-side sync preferences for players.
@@ -22,6 +23,8 @@ import kotlin.io.path.writeText
  * 
  * These are the server's record of player consent, persisted to disk.
  * The client has its own local copy; the server respects the player's choices.
+ * 
+ * Also published to AT Protocol for data storage and roaming.
  */
 @Serializable
 data class PlayerSyncPreferences(
@@ -65,9 +68,9 @@ data class PlayerSyncPreferences(
 }
 
 /**
-     * Server-side persistent storage for player sync preferences.
-     * Each player's preferences are stored in a JSON file and also published to AT Protocol.
-     */
+ * Server-side persistent storage for player sync preferences.
+ * Each player's preferences are stored in a JSON file and also published to AT Protocol.
+ */
 object PlayerSyncPreferencesStore {
     private val logger = LoggerFactory.getLogger("atproto-connect-server")
     private val json = Json { prettyPrint = true }
@@ -78,20 +81,6 @@ object PlayerSyncPreferencesStore {
     private var recordManager: RecordManager? = null
     private var sessionManager: AtProtoSessionManager? = null
     private val atProtoScope = CoroutineScope(Dispatchers.IO)
-
-    fun setAtProtoDependencies(recordManager: RecordManager, sessionManager: AtProtoSessionManager) {
-        this.recordManager = recordManager
-        this.sessionManager = sessionManager
-    }
-
-    init {
-        try {
-            Files.createDirectories(preferencesDir)
-            logger.info("Initialized player sync preferences directory")
-        } catch (e: Exception) {
-            logger.error("Failed to create preferences directory: ${e.message}", e)
-        }
-    }
 
     fun setAtProtoDependencies(recordManager: RecordManager, sessionManager: AtProtoSessionManager) {
         this.recordManager = recordManager
