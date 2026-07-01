@@ -16,6 +16,7 @@ import com.jollywhoppers.atproto.server.ServerAccount
 import com.jollywhoppers.atproto.server.ServerStatusSyncService
 import com.jollywhoppers.atproto.server.AppViewHttpServer
 import com.jollywhoppers.atproto.server.FirehoseSubscriber
+import com.jollywhoppers.atproto.server.PlayerStatFilterConfig
 import com.jollywhoppers.security.SecurityAuditor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -135,11 +136,16 @@ object socialsync : ModInitializer {
 
             // Initialize sync preferences store (single source of truth for consent)
             syncPreferencesStore = PlayerSyncPreferencesStore
+            syncPreferencesStore.setAtProtoDependencies(recordManager, sessionManager)
             logger.info("Sync preferences store initialized")
 
             // Migrate legacy sync consent from PlayerIdentityStore
             syncPreferencesStore.migrateFromIdentityStore(identityStore)
             logger.info("Legacy sync consent migration completed")
+
+            // Load per-server stats filter configuration
+            val statFilterConfig = PlayerStatFilterConfig.load(configDir)
+            logger.info("Stats filter config loaded (${statFilterConfig.nonSensitivePrefixes.size} prefixes, ${statFilterConfig.sensitiveStatKeys.size} blocked keys)")
 
             // Initialize automatic Minecraft stat syncing
             val statSyncStatePath = configDir.resolve("minecraft-stat-sync-state.json")
@@ -148,7 +154,8 @@ object socialsync : ModInitializer {
                 sessionManager = sessionManager,
                 identityStore = identityStore,
                 syncPreferencesStore = syncPreferencesStore,
-                storageFile = statSyncStatePath
+                storageFile = statSyncStatePath,
+                filterConfig = statFilterConfig
             )
             logger.info("Minecraft stat sync service initialized at: $statSyncStatePath")
 

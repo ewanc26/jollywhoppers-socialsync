@@ -2,7 +2,6 @@ package com.jollywhoppers.atproto
 
 import com.jollywhoppers.atproto.server.*
 import com.jollywhoppers.security.*
-import com.jollywhoppers.atproto.server.AchievementSyncStore
 import io.github.kikin81.atproto.runtime.NoAuth
 import io.github.kikin81.atproto.runtime.XrpcClient
 import io.ktor.client.HttpClient
@@ -512,6 +511,119 @@ class PlayerSyncPreferencesTest {
 }
 
 // =============================================================================
+// NonSensitiveStatFilter
+// =============================================================================
+
+class NonSensitiveStatFilterTest {
+
+    private val defaultFilterSets = PlayerStatFilterConfig.FilterSets()
+
+    @Test
+    @DisplayName("minecraft:mined stats are non-sensitive")
+    fun testMinedCategoryIsNonSensitive() {
+        assertTrue(defaultFilterSets.isStatNonSensitive(
+            "minecraft:diamond_ore", "minecraft:mined"
+        ))
+    }
+
+    @Test
+    @DisplayName("minecraft:crafted stats are non-sensitive")
+    fun testCraftedCategoryIsNonSensitive() {
+        assertTrue(defaultFilterSets.isStatNonSensitive(
+            "minecraft:iron_ingot", "minecraft:crafted"
+        ))
+    }
+
+    @Test
+    @DisplayName("minecraft:used stats are non-sensitive")
+    fun testUsedCategoryIsNonSensitive() {
+        assertTrue(defaultFilterSets.isStatNonSensitive(
+            "minecraft:stone_sword", "minecraft:used"
+        ))
+    }
+
+    @Test
+    @DisplayName("minecraft:broken stats are non-sensitive")
+    fun testBrokenCategoryIsNonSensitive() {
+        assertTrue(defaultFilterSets.isStatNonSensitive(
+            "minecraft:stone_pickaxe", "minecraft:broken"
+        ))
+    }
+
+    @Test
+    @DisplayName("minecraft:picked_up stats are non-sensitive")
+    fun testPickedUpCategoryIsNonSensitive() {
+        assertTrue(defaultFilterSets.isStatNonSensitive(
+            "minecraft:diamond", "minecraft:picked_up"
+        ))
+    }
+
+    @Test
+    @DisplayName("minecraft:dropped stats are non-sensitive")
+    fun testDroppedCategoryIsNonSensitive() {
+        assertTrue(defaultFilterSets.isStatNonSensitive(
+            "minecraft:cobblestone", "minecraft:dropped"
+        ))
+    }
+
+    @Test
+    @DisplayName("known custom stats like walk_one_cm are non-sensitive")
+    fun testWalkOneCmIsNonSensitive() {
+        assertTrue(defaultFilterSets.isStatNonSensitive(
+            "minecraft:walk_one_cm", "minecraft:custom"
+        ))
+    }
+
+    @Test
+    @DisplayName("known custom stats like jump are non-sensitive")
+    fun testJumpIsNonSensitive() {
+        assertTrue(defaultFilterSets.isStatNonSensitive(
+            "minecraft:jump", "minecraft:custom"
+        ))
+    }
+
+    @Test
+    @DisplayName("play_time is non-sensitive despite being a time stat")
+    fun testPlayTimeIsNonSensitive() {
+        assertTrue(defaultFilterSets.isStatNonSensitive(
+            "minecraft:play_time", "minecraft:custom"
+        ))
+    }
+
+    @Test
+    @DisplayName("minecraft:player_kills is sensitive")
+    fun testPlayerKillsIsSensitive() {
+        assertFalse(defaultFilterSets.isStatNonSensitive(
+            "minecraft:player_kills", "minecraft:custom"
+        ))
+    }
+
+    @Test
+    @DisplayName("minecraft:leave_game is sensitive")
+    fun testLeaveGameIsSensitive() {
+        assertFalse(defaultFilterSets.isStatNonSensitive(
+            "minecraft:leave_game", "minecraft:custom"
+        ))
+    }
+
+    @Test
+    @DisplayName("unknown mod stats without minecraft: prefix are NOT non-sensitive")
+    fun testUnknownModStatsAreSensitive() {
+        assertFalse(defaultFilterSets.isStatNonSensitive(
+            "somemod:some_stat", "somemod:custom"
+        ))
+    }
+
+    @Test
+    @DisplayName("empty key is not non-sensitive")
+    fun testEmptyKeyIsNotNonSensitive() {
+        assertFalse(defaultFilterSets.isStatNonSensitive(
+            "", ""
+        ))
+    }
+}
+
+// =============================================================================
 // AppViewService
 // =============================================================================
 
@@ -718,53 +830,4 @@ class AppViewServiceTest {
 }
 
 
-// =============================================================================
-// AchievementSyncService
-// =============================================================================
-
-class AchievementSyncServiceTest {
-
-    @TempDir
-    lateinit var tempDir: Path
-    private val client = AtProtoClient(slingshotUrl = "https://slingshot.microcosm.blue", fallbackPdsUrl = "https://bsky.social")
-
-    private lateinit var sessionManager: AtProtoSessionManager
-    private lateinit var identityStore: PlayerIdentityStore
-    private lateinit var syncPreferencesStore: PlayerSyncPreferencesStore
-    private lateinit var recordManager: RecordManager
-    private lateinit var achievementSyncService: AchievementSyncService
-    private lateinit var achievementSyncStore: AchievementSyncStore
-    private val testPlayerUuid: UUID = UUID.randomUUID()
-
-    @BeforeEach
-    fun setup() {
-        val testHttpClient = HttpClient(CIO) { expectSuccess = false }
-        val testXrpcClient = XrpcClient(baseUrl = "https://bsky.social", httpClient = testHttpClient, authProvider = NoAuth)
-        sessionManager = AtProtoSessionManager(tempDir.resolve("test-sessions.json"), client)
-        identityStore = PlayerIdentityStore(tempDir.resolve("player-identities.json"))
-        syncPreferencesStore = PlayerSyncPreferencesStore
-        recordManager = RecordManager(testXrpcClient, Json { ignoreUnknownKeys = true }, sessionManager)
-        achievementSyncStore = AchievementSyncStore(tempDir.resolve("achievement-sync-state.json"))
-        
-        achievementSyncService = AchievementSyncService(
-            recordManager,
-            sessionManager,
-            identityStore,
-            syncPreferencesStore,
-            achievementSyncStore
-        )
-        
-        // Mock identity and session for the test
-        identityStore.linkIdentity(testPlayerUuid, "did:plc:test123", "test.bsky.social")
-        sessionManager.storeVerifiedSession(
-            testPlayerUuid, "did:plc:test123", "test.bsky.social", 
-            "https://bsky.social", "access", "refresh"
-        )
-    }
-
-    // Since onAdvancementCompleted needs ServerPlayer and AdvancementHolder, 
-    // which are complex to mock without a full Minecraft environment, 
-    // we would ideally use a proper test framework or mock library.
-    // For now, this test structure serves as documentation for the intended sync flow.
-}
 

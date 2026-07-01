@@ -19,6 +19,16 @@ import com.jollywhoppers.atproto.server.model.Stats
 
 /**
  * Periodically snapshots online players' stats and syncs them to AT Protocol.
+ *
+ * Non-sensitive stat filtering is driven by a per-server [PlayerStatFilterConfig]
+ * loaded from `config/atproto-connect/stats-filter-config.json`. Server operators
+ * can edit this file to control exactly which stats are synced.
+ *
+ * Filtering rules (from config):
+ * - Allowlist: only stat keys under known non-sensitive prefixes (e.g. "minecraft:") are synced
+ * - Blocklist: specific sensitive stats (e.g. leave_game, player_kills) are always excluded
+ * - Custom/unknown stat types are excluded by default
+ * - Per-player sync frequency from [PlayerSyncPreferences] is respected
  */
 class PlayerStatSyncService(
     private val recordManager: RecordManager,
@@ -26,8 +36,13 @@ class PlayerStatSyncService(
     private val identityStore: PlayerIdentityStore,
     private val syncPreferencesStore: PlayerSyncPreferencesStore,
     storageFile: Path,
-    private val syncIntervalTicks: Long = 20L * 60L * 5L
+    private val defaultSyncIntervalTicks: Long = 20L * 60L * 5L,
+    filterConfig: PlayerStatFilterConfig = PlayerStatFilterConfig()
 ) {
+    /** The active filter rules derived from the config */
+    @Volatile
+    var filterSets: PlayerStatFilterConfig.FilterSets = filterConfig.toFilterSets()
+        private set
     private val logger = LoggerFactory.getLogger("atproto-connect:stats")
     private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val syncStateStore = PlayerStatSyncStore(storageFile)
@@ -37,31 +52,63 @@ class PlayerStatSyncService(
     @Volatile
     private var lastCacheRefreshTime = 0L
 
+    private val playerNextTick = ConcurrentHashMap<UUID, Long>()
+
     private val json = Json {
         prettyPrint = false
         ignoreUnknownKeys = true
         encodeDefaults = true
     }
 
-    @Volatile
-    private var nextEvaluationTick: Long = 0L
-
     companion object {
-        private const val COLLECTION_ID = "com.jollywhoppers.minecraft.player.stats"
+        private const val COLLECTION_ID = AtProtoCollections.PLAYER_STATS
         private const val MAX_STATISTICS_PER_RECORD = 1000
+        private const val TICKS_PER_MINUTE = 20L * 60L
+        private const val MIN_SYNC_INTERVAL_MINUTES = 1L
+        private const val MAX_SYNC_INTERVAL_MINUTES = 1440L
+
+        fun isStatNonSensitive(valueKey: String, categoryKey: String): Boolean {
+            return PlayerStatFilterConfig.FilterSets().isStatNonSensitive(valueKey, categoryKey)
+        }
+    }
+
+    /**
+     * Reloads the filter configuration from disk.
+     * Called by the admin reload-stats-filter command to apply config changes at runtime.
+     */
+    fun reloadFilterConfig(configDir: Path) {
+        val config = PlayerStatFilterConfig.load(configDir)
+        filterSets = config.toFilterSets()
+        logger.info("Stats filter config reloaded from $configDir/stats-filter-config.json")
+    }
+
+    private fun isStatNonSensitive(valueKey: String, categoryKey: String): Boolean {
+        return filterSets.isStatNonSensitive(valueKey, categoryKey)
     }
 
     fun onServerTick(server: MinecraftServer) {
         if (!server.isRunning || server.isStopped) return
         val currentTick = server.tickCount.toLong()
-        if (currentTick < nextEvaluationTick) return
-        nextEvaluationTick = currentTick + syncIntervalTicks
 
         refreshSessionCache(server)
 
-        server.playerList.players
-            .mapNotNull { player -> buildSnapshot(server, player) }
-            .forEach { snapshot -> queueSync(snapshot) }
+        for (player in server.playerList.players) {
+            if (!identityStore.isLinked(player.uuid)) continue
+            val prefs = syncPreferencesStore.getOrDefault(player.uuid)
+            if (!prefs.shouldSync("stats")) continue
+
+            val playerIntervalTicks = (prefs.statsSyncFrequency.toLong()
+                .coerceIn(MIN_SYNC_INTERVAL_MINUTES, MAX_SYNC_INTERVAL_MINUTES)) * TICKS_PER_MINUTE
+
+            val nextTick = playerNextTick.getOrPut(player.uuid) { currentTick }
+            if (currentTick < nextTick) continue
+
+            // Use player's configured frequency for this player's next check
+            playerNextTick[player.uuid] = currentTick + playerIntervalTicks
+
+            val snapshot = buildSnapshot(server, player) ?: continue
+            queueSync(snapshot)
+        }
     }
 
     private fun queueSync(snapshot: StatsSnapshot) {
@@ -108,13 +155,19 @@ class PlayerStatSyncService(
 
     private fun buildSnapshot(server: MinecraftServer, player: ServerPlayer): StatsSnapshot? {
         if (!identityStore.isLinked(player.uuid)) return null
-        
+
         val cachedSession = sessionCache[player.uuid]
         if (cachedSession == null || !cachedSession.isSuccess) return null
-        
-        if (!syncPreferencesStore.getOrDefault(player.uuid).shouldSync("stats")) return null
 
-        val statistics = extractStatistics(player)
+        val prefs = syncPreferencesStore.getOrDefault(player.uuid)
+        if (!prefs.shouldSync("stats")) return null
+
+        val statistics = extractNonSensitiveStatistics(player)
+        if (statistics.isEmpty()) {
+            logger.debug("No non-sensitive stats to sync for ${player.name.string}")
+            return null
+        }
+
         val orderedStatistics = statistics.sortedWith(
             compareBy<StatisticEntry> { it.category }.thenBy { it.key }.thenBy { it.value }
         ).take(MAX_STATISTICS_PER_RECORD)
@@ -125,8 +178,8 @@ class PlayerStatSyncService(
         val record = Stats(
             player = buildJsonObject { put("uuid", player.uuid.toString()); put("username", player.name.string) },
             server = buildJsonObject { put("serverId", ServerIdentity.buildServerId()) },
-            statistics = orderedStatistics.map { 
-                buildJsonObject { put("key", it.key); put("value", it.value.toLong()); put("category", it.category) } 
+            statistics = orderedStatistics.map {
+                buildJsonObject { put("key", it.key); put("value", it.value.toLong()); put("category", it.category) }
             },
             playtimeMinutes = playtimeMinutes.toLong(),
             level = player.experienceLevel.toLong(),
@@ -138,21 +191,44 @@ class PlayerStatSyncService(
         return StatsSnapshot(SnapshotPlayer(player.uuid, player.name.string), record, fingerprint)
     }
 
+    /**
+     * Extracts only non-sensitive statistics from a player.
+     *
+     * Filtering rules:
+     * 1. Stat keys matching a [SENSITIVE_STAT_KEYS] entry are always excluded
+     * 2. Stats in [NON_SENSITIVE_CATEGORIES] (mined, crafted, used, broken, picked_up, dropped) are included
+     * 3. Custom stats matching [NON_SENSITIVE_CUSTOM_STATS] are included
+     * 4. Stats with a key prefix in [NON_SENSITIVE_PREFIXES] are included (default: minecraft:)
+     * 5. All other stats (custom mod stats, unknown prefixes) are excluded
+     */
     @Suppress("UNCHECKED_CAST")
-    private fun extractStatistics(player: ServerPlayer): List<StatisticEntry> {
+    private fun extractNonSensitiveStatistics(player: ServerPlayer): List<StatisticEntry> {
         val statsCounter = player.getStats()
         val entries = mutableListOf<StatisticEntry>()
         val statTypeRegistry = BuiltInRegistries.STAT_TYPE
 
         for (statType in statTypeRegistry) {
             val categoryKey = statTypeRegistry.getKey(statType)?.toString() ?: continue
+
             val valueRegistry = statType.registry
             for (stat in statType) {
                 val value = statsCounter.getValue(stat)
-                if (value > 0) {
-                    val valueKey = (valueRegistry as net.minecraft.core.Registry<Any>).getKey(stat.value!!)?.toString() ?: continue
-                    entries.add(StatisticEntry(key = valueKey, value = value, category = categoryKey))
+                if (value <= 0) continue
+
+                val valueKey = try {
+                    (valueRegistry as net.minecraft.core.Registry<Any>)
+                        .getKey(stat.value ?: continue)?.toString() ?: continue
+                } catch (e: Exception) {
+                    logger.debug("Failed to resolve stat value key for category $categoryKey")
+                    continue
                 }
+
+                if (!isStatNonSensitive(valueKey, categoryKey)) {
+                    logger.debug("Excluding stat $valueKey (category: $categoryKey) - not in non-sensitive allowlist")
+                    continue
+                }
+
+                entries.add(StatisticEntry(key = valueKey, value = value, category = categoryKey))
             }
         }
         return entries
@@ -161,7 +237,7 @@ class PlayerStatSyncService(
     private fun mapGameMode(player: ServerPlayer) = player.gameMode.getGameModeForPlayer().name.lowercase()
 
     private fun computeFingerprint(stats: List<StatisticEntry>, playtime: Int, player: ServerPlayer): String {
-        val payload = "$stats$playtime${player.experienceLevel}"
+        val payload = "$stats$playtime${player.experienceLevel}${player.level().dimension().location()}"
         return MessageDigest.getInstance("SHA-256").digest(payload.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
     }
