@@ -20,10 +20,7 @@ import java.security.spec.X509EncodedKeySpec
 import java.time.Duration
 import java.util.UUID
 
-@Suppress("UNUSED_PARAMETER")
-class OAuthManager @JvmOverloads constructor(
-    unused: Any? = null,
-) {
+class OAuthManager {
     private val logger = LoggerFactory.getLogger("atproto-connect:oauth")
     private val json = Json {
         ignoreUnknownKeys = true
