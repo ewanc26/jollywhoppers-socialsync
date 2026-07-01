@@ -96,12 +96,13 @@ class PlayerIdentityStore(
     }
 
     /**
-     * Publish identity mapping to AT Protocol as a record in the server's repo.
+     * Publish identity mapping to AT Protocol as a record in the player's repo.
      * Non-critical; local file is authoritative. On failure, only a warning is logged.
      */
     fun publishIdentityToAtProtocol(uuid: UUID, did: String, handle: String?, displayName: String?) {
         val rm = recordManager ?: return
         val sm = sessionManager ?: return
+        if (!sm.hasSession(uuid)) return
         atProtoScope.launch {
             try {
                 val record = IdentityRecord(
@@ -112,7 +113,7 @@ class PlayerIdentityStore(
                     linkedAt = Instant.now().toString(),
                 )
                 rm.putTypedRecord(
-                    ServerAccount.SERVER_PLAYER_UUID,
+                    uuid,
                     AtProtoCollections.IDENTITY,
                     uuid.toString(),
                     record,
@@ -224,24 +225,27 @@ class PlayerIdentityStore(
      */
     suspend fun loadIdentitiesFromAtProtocol() {
         val rm = recordManager ?: return
+        val sm = sessionManager ?: return
         try {
-            val result = rm.listAllRecords(ServerAccount.SERVER_PLAYER_UUID, AtProtoCollections.IDENTITY)
-            val records = result.getOrNull() ?: return
             var loaded = 0
-            for (recordData in records) {
-                try {
-                    val identityRecord = json.decodeFromJsonElement<IdentityRecord>(recordData.value)
-                    val uuid = UUID.fromString(identityRecord.playerUuid)
-                    if (!identities.containsKey(uuid)) {
-                        identities[uuid] = PlayerIdentity(
-                            uuid = identityRecord.playerUuid,
-                            did = identityRecord.did,
-                            handle = identityRecord.handle ?: "",
-                        )
-                        loaded++
+            for ((uuid, _) in sm.getAllSessions()) {
+                val result = rm.listAllRecords(uuid, AtProtoCollections.IDENTITY)
+                val records = result.getOrNull() ?: continue
+                for (recordData in records) {
+                    try {
+                        val identityRecord = json.decodeFromJsonElement<IdentityRecord>(recordData.value)
+                        val recordUuid = UUID.fromString(identityRecord.playerUuid)
+                        if (!identities.containsKey(recordUuid)) {
+                            identities[recordUuid] = PlayerIdentity(
+                                uuid = identityRecord.playerUuid,
+                                did = identityRecord.did,
+                                handle = identityRecord.handle ?: "",
+                            )
+                            loaded++
+                        }
+                    } catch (e: Exception) {
+                        logger.warn("Failed to decode identity record from AT Protocol: ${e.message}")
                     }
-                } catch (e: Exception) {
-                    logger.warn("Failed to decode identity record from AT Protocol: ${e.message}")
                 }
             }
             if (loaded > 0) {
