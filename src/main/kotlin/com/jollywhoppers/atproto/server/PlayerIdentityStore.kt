@@ -113,7 +113,7 @@ class PlayerIdentityStore(
                 )
                 rm.putTypedRecord(
                     ServerAccount.SERVER_PLAYER_UUID,
-                    "com.jollywhoppers.minecraft.identity",
+                    AtProtoCollections.IDENTITY,
                     uuid.toString(),
                     record,
                 )
@@ -225,7 +225,7 @@ class PlayerIdentityStore(
     suspend fun loadIdentitiesFromAtProtocol() {
         val rm = recordManager ?: return
         try {
-            val result = rm.listAllRecords(ServerAccount.SERVER_PLAYER_UUID, "com.jollywhoppers.minecraft.identity")
+            val result = rm.listAllRecords(ServerAccount.SERVER_PLAYER_UUID, AtProtoCollections.IDENTITY)
             val records = result.getOrNull() ?: return
             var loaded = 0
             for (recordData in records) {

@@ -158,7 +158,7 @@ object PlayerSyncPreferencesStore {
                     achievementSyncFrequency = prefs.achievementSyncFrequency,
                     updatedAt = Instant.now().toString(),
                 )
-                rm.putTypedRecord(uuid, "com.jollywhoppers.minecraft.syncpreferences", "self", record)
+                rm.putTypedRecord(uuid, AtProtoCollections.SYNC_PREFERENCES, "self", record)
                 logger.debug("Published sync preferences to AT Protocol for player $uuid")
             } catch (e: Exception) {
                 logger.warn("Failed to publish sync preferences to AT Protocol for player $uuid: ${e.message}")
@@ -174,7 +174,7 @@ object PlayerSyncPreferencesStore {
         val rm = recordManager ?: return Result.success(null)
         return try {
             val result = rm.getTypedRecord<SyncPreferencesRecord>(
-                uuid, "com.jollywhoppers.minecraft.syncpreferences", "self"
+                uuid, AtProtoCollections.SYNC_PREFERENCES, "self"
             )
             result.map { recordData ->
                 val rec = recordData.value

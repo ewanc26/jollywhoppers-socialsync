@@ -50,7 +50,7 @@ class PlayerProfileService(
     }
 
     companion object {
-        private const val COLLECTION_ID = "com.jollywhoppers.minecraft.player.profile"
+        private const val COLLECTION_ID = AtProtoCollections.PLAYER_PROFILE
         private const val RKEY = "self"
     }
 
