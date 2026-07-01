@@ -35,7 +35,7 @@ class ServerStatusSyncService(
     private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     companion object {
-        private const val COLLECTION_ID = "com.jollywhoppers.minecraft.server.status"
+        private const val COLLECTION_ID = AtProtoCollections.SERVER_STATUS
         private const val RKEY = "self"
         val SERVER_UUID: UUID = ServerAccount.SERVER_PLAYER_UUID
     }

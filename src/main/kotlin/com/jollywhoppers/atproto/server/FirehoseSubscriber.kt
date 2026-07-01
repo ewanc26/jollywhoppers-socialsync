@@ -18,11 +18,11 @@ class FirehoseSubscriber(
     private var job: Job? = null
 
     private val targetCollections = setOf(
-        "com.jollywhoppers.minecraft.player.profile",
-        "com.jollywhoppers.minecraft.player.stats",
-        "com.jollywhoppers.minecraft.achievement",
-        "com.jollywhoppers.minecraft.player.session",
-        "com.jollywhoppers.minecraft.server.status",
+        AtProtoCollections.PLAYER_PROFILE,
+        AtProtoCollections.PLAYER_STATS,
+        AtProtoCollections.ACHIEVEMENT,
+        AtProtoCollections.PLAYER_SESSION,
+        AtProtoCollections.SERVER_STATUS,
     )
 
     fun start() {
@@ -82,9 +82,9 @@ class FirehoseSubscriber(
             when (action) {
                 "create", "update" -> {
                     when (collection) {
-                        "com.jollywhoppers.minecraft.player.profile" -> appViewService.indexPlayerProfile(uri, record)
-                        "com.jollywhoppers.minecraft.player.stats" -> appViewService.indexPlayerStats(uri, record)
-                        "com.jollywhoppers.minecraft.achievement" -> appViewService.indexAchievement(uri, record)
+                        AtProtoCollections.PLAYER_PROFILE -> appViewService.indexPlayerProfile(uri, record)
+                        AtProtoCollections.PLAYER_STATS -> appViewService.indexPlayerStats(uri, record)
+                        AtProtoCollections.ACHIEVEMENT -> appViewService.indexAchievement(uri, record)
                     }
                 }
             }

@@ -27,7 +27,7 @@ class AchievementSyncService(
     private val json = Json { ignoreUnknownKeys = true }
 
     companion object {
-        private const val COLLECTION_ID = "com.jollywhoppers.minecraft.achievement"
+        private const val COLLECTION_ID = AtProtoCollections.ACHIEVEMENT
         lateinit var INSTANCE: AchievementSyncService
     }
 
@@ -87,7 +87,7 @@ class AchievementSyncService(
         }
     }
 
-    private fun extractCategory(advancementId: String): String {
+    internal fun extractCategory(advancementId: String): String {
         return when {
             advancementId.contains("minecraft:story") -> "story"
             advancementId.contains("minecraft:nether") -> "nether"

@@ -45,7 +45,7 @@ class PlayerSessionSyncService(
     private val activeSessions = ConcurrentHashMap<UUID, ActiveSession>()
 
     companion object {
-        private const val COLLECTION_ID = "com.jollywhoppers.minecraft.player.session"
+        private const val COLLECTION_ID = AtProtoCollections.PLAYER_SESSION
     }
 
     data class ActiveSession(
@@ -171,7 +171,7 @@ class PlayerSessionSyncService(
         activeSessions.remove(uuid)
     }
 
-    private fun normalizeQuitReason(reason: String): String {
+    internal fun normalizeQuitReason(reason: String): String {
         return when {
             reason.equals("server_stop", ignoreCase = true) -> "server_stop"
             reason.equals("reconnected", ignoreCase = true) -> "reconnected"
