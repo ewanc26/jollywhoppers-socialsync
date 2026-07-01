@@ -25,12 +25,15 @@ Plugin data is stored under `plugins/SocialSync/`. The plugin shades its Kotlin,
 | `/atproto whoami` | Display the linked identity |
 | `/atproto status` | Display plugin and link-store status |
 | `/atproto help` | Display command help |
+| `/atproto admin server-login <handle or DID> <app-password>` | Configure the server AT Protocol repository (operator only) |
 
 `/socialsync` is an alias for `/atproto`. Player commands require `socialsync.use`, which defaults to true.
 
 ## Architecture
 
-Social Sync is a server-side Paper plugin. Identity resolution, secure persistence, achievement publishing, AT Protocol records, AppView components, security auditing, and the HTTP client are packaged in the plugin JAR.
+Social Sync is a server-side Paper plugin. Identity resolution, secure persistence, achievement tracking, session tracking, periodic server-status publishing, AT Protocol records, AppView/firehose components, security auditing, and the HTTP client are packaged in the plugin JAR.
+
+Completed advancements are published once per player. Session records are published on disconnect and server status is refreshed every five minutes. These publishing features require a server AT Protocol account configured with the admin login command.
 
 ## Development
 
