@@ -28,9 +28,9 @@ Plugin data is stored under `plugins/SocialSync/`. The plugin shades its Kotlin,
 
 `/socialsync` is an alias for `/atproto`. Player commands require `socialsync.use`, which defaults to true.
 
-## Platform migration
+## Architecture
 
-The Paper build is server-side only. Fabric client features—ModMenu, client OAuth, mixins, custom payloads, and client-side preferences—are not available on Paper and have been removed from this branch. Identity resolution, secure persistence, AT Protocol records, AppView components, security auditing, and the HTTP client remain platform-neutral.
+Social Sync is a server-side Paper plugin. Identity resolution, secure persistence, achievement publishing, AT Protocol records, AppView components, security auditing, and the HTTP client are packaged in the plugin JAR.
 
 ## Development
 
