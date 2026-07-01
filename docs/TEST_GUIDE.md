@@ -265,9 +265,9 @@ class MyFeatureTest {
 
 ## Known Limitations
 
-1. **No Minecraft runtime**: Tests run in plain JUnit — services depending on `ServerPlayer`, `MinecraftServer`, `FabricLoader` are tested at the data-class or pure-function level only
+1. **No live Paper runtime**: Unit tests run in plain JUnit; server lifecycle and command integration require a Paper test server
 2. **No HTTP mocking**: Tests that require AT Protocol HTTP calls are not covered (use `expectSuccess = false` Ktor client to avoid actual connections)
-3. **Singleton objects**: `PlayerSyncPreferencesStore` is an `object` with a `FabricLoader` dependency — only its data class (`PlayerSyncPreferences`) is directly tested
+3. **Paper integration**: plugin loading, permissions, and commands should also be smoke-tested on the targeted stable Paper build
 4. **Client module**: All 14 client-side files (OAuth, PKCE, DPoP, config screens) have zero test coverage
 
 ## Debugging Tests

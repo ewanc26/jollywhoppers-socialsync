@@ -254,7 +254,8 @@ class AtProtoClient(
     }
 
     suspend fun createSession(identifier: String, password: String): Result<CreateSessionResponse> = runCatching {
-        val url = "$fallbackPdsUrl/xrpc/com.atproto.server.createSession"
+        val (_, _, resolvedPdsUrl) = resolveIdentifier(identifier).getOrThrow()
+        val url = "$resolvedPdsUrl/xrpc/com.atproto.server.createSession"
         validateUrl(url)
 
         val bodyJson = json.encodeToString(CreateSessionRequest.serializer(), CreateSessionRequest(identifier = identifier, password = password))

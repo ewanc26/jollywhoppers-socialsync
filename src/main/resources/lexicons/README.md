@@ -65,7 +65,7 @@ When a player completes a milestone, the mod would:
 ## Data Flow
 
 ```
-Minecraft Server (Fabric)
+Minecraft Server (Paper)
     ↓
 Player Events (blocks mined, mobs killed, etc.)
     ↓
