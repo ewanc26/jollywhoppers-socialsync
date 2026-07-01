@@ -1,0 +1,19 @@
+name: SocialSync
+version: '${version}'
+main: com.jollywhoppers.paper.SocialSyncPaperPlugin
+description: Links Minecraft players to AT Protocol identities and syncs server data.
+authors: [ewancroft.uk, jollywhoppers.com]
+website: https://tangled.org/jollywhoppers.com/socialsync
+api-version: '26.1.2'
+commands:
+  atproto:
+    description: Manage your Social Sync AT Protocol identity
+    usage: /atproto <link|unlink|whoami|status|help>
+    aliases: [socialsync]
+permissions:
+  socialsync.use:
+    description: Use Social Sync player commands
+    default: true
+  socialsync.admin:
+    description: Manage Social Sync
+    default: op

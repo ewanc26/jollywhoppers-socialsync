@@ -6,7 +6,7 @@
 
 ```
 ┌─────────────────────────────────────┐
-│      Minecraft Server (Fabric)      │
+│       Minecraft Server (Paper)      │
 │  ┌─────────────────────────────────┐│
 │  │   atproto-connect Mod           ││
 │  │ ┌─────────────────────────────┐ ││
@@ -435,9 +435,8 @@ AppView Service
 
 **Step 1: Install Dependencies**
 ```bash
-# Install Fabric Loader for 1.21.10
-# Install Fabric API 0.138.4+1.21.10
-# Install Fabric Language Kotlin 1.13.8+kotlin.2.3.0
+# Install Paper 26.1.2 and Java 25+
+# Copy build/libs/socialsync-paper-0.6.0-SNAPSHOT.jar to plugins/
 ```
 
 **Step 2: Install Mod**
