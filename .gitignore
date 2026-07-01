@@ -37,6 +37,14 @@ run/
 result/
 .direnv/
 
+# kotlin build
+
+.kotlin/
+
+# letta agent state
+
+.letta/
+
 # java
 
 hs_err_*.log

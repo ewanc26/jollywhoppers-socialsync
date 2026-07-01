@@ -1,7 +1,7 @@
 {
 	"schemaVersion": 1,
 	"id": "atproto-connect",
-	"version": "0.5.0",
+	"version": "0.5.1",
 	"name": "Social Sync",
 	"description": "A Fabric mod that links Minecraft players to AT Protocol identities, enabling secure authentication and future decentralised data syncing.",
 	"authors": [
