@@ -1,6 +1,9 @@
 package com.jollywhoppers.paper
 
 import com.jollywhoppers.atproto.server.AtProtoClient
+import com.jollywhoppers.atproto.server.AppViewHttpServer
+import com.jollywhoppers.atproto.server.AppViewService
+import com.jollywhoppers.atproto.server.FirehoseSubscriber
 import com.jollywhoppers.atproto.server.AtProtoSessionManager
 import com.jollywhoppers.atproto.server.AchievementSyncStore
 import com.jollywhoppers.atproto.server.PlayerIdentityStore
@@ -28,6 +31,8 @@ class SocialSyncPaperPlugin : JavaPlugin(), CommandExecutor, TabCompleter {
     private lateinit var identityStore: PlayerIdentityStore
     private lateinit var sessionManager: AtProtoSessionManager
     private lateinit var recordManager: RecordManager
+    private lateinit var firehoseSubscriber: FirehoseSubscriber
+    private lateinit var appViewServer: AppViewHttpServer
 
     override fun onEnable() {
         dataFolder.mkdirs()
@@ -56,7 +61,14 @@ class SocialSyncPaperPlugin : JavaPlugin(), CommandExecutor, TabCompleter {
             }
         }
         recordManager = RecordManager(atProtoClient.xrpcClient, atProtoClient.json, sessionManager)
-        identityStore = PlayerIdentityStore(dataPath.resolve("player-identities.json"))
+        identityStore = PlayerIdentityStore(
+            dataPath.resolve("player-identities.json"),
+            recordManager,
+            sessionManager,
+        )
+        val appViewService = AppViewService(recordManager)
+        firehoseSubscriber = FirehoseSubscriber(appViewService).also { it.start() }
+        appViewServer = AppViewHttpServer(appViewService).also { it.start() }
         server.pluginManager.registerEvents(
             PaperAchievementTracker(
                 plugin = this,
@@ -65,6 +77,20 @@ class SocialSyncPaperPlugin : JavaPlugin(), CommandExecutor, TabCompleter {
                 syncStore = AchievementSyncStore(dataPath.resolve("achievement-sync-state.json")),
             ),
             this,
+        )
+        val serverDataTracker = PaperServerDataTracker(this, scope, recordManager)
+        server.pluginManager.registerEvents(serverDataTracker, this)
+        server.globalRegionScheduler.runAtFixedRate(
+            this,
+            { serverDataTracker.publishServerStatus() },
+            20L,
+            6000L,
+        )
+        server.globalRegionScheduler.runAtFixedRate(
+            this,
+            { serverDataTracker.publishPlayerStats() },
+            1200L,
+            72000L,
         )
 
         requireNotNull(getCommand("atproto")) { "atproto command missing from plugin.yml" }.also {
@@ -75,6 +101,8 @@ class SocialSyncPaperPlugin : JavaPlugin(), CommandExecutor, TabCompleter {
     }
 
     override fun onDisable() {
+        if (::appViewServer.isInitialized) appViewServer.stop()
+        if (::firehoseSubscriber.isInitialized) firehoseSubscriber.shutdown()
         scope.cancel("Plugin disabled")
         logger.info("Social Sync disabled")
     }
