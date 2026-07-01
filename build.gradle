@@ -49,8 +49,9 @@ dependencies {
 	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 	modImplementation "net.fabricmc:fabric-language-kotlin:${project.fabric_kotlin_version}"
 	
-	// Mod Menu for configuration UI (from Modrinth)
-	modImplementation "maven.modrinth:modmenu:11.0.3"
+	// Mod Menu API and development runtime; remains optional for users.
+	// 16.0.1 is the stable release for MC 1.21.9–1.21.10.
+	modImplementation "maven.modrinth:modmenu:16.0.1"
 	
 	// Kotlinx serialization
 	implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3"

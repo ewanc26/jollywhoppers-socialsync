@@ -48,8 +48,8 @@ object socialsyncClient : ClientModInitializer {
 			oAuthManager = OAuthManager()
 			logger.info("OAuth manager initialized")
 
-			// Initialize client-side commands
-			commands = ClientAtProtoCommands(sessionManager, oAuthManager)
+			// Initialize client-side commands (help only — all config via ModMenu)
+			commands = ClientAtProtoCommands()
 			
 			// Register client-side commands
 			ClientCommandRegistrationCallback.EVENT.register { dispatcher, _ ->

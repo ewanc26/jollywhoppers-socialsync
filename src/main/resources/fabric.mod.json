@@ -1,7 +1,7 @@
 {
 	"schemaVersion": 1,
 	"id": "atproto-connect",
-	"version": "0.5.1",
+	"version": "${version}",
 	"name": "Social Sync",
 	"description": "A Fabric mod that links Minecraft players to AT Protocol identities, enabling secure authentication and future decentralised data syncing.",
 	"authors": [
@@ -9,11 +9,11 @@
 		"jollywhoppers.com"
 	],
 	"contact": {
-		"homepage": "https://tangled.org/did:plc:ofrbh253gwicbkc5nktqepol/atproto-connect",
-		"sources": "https://tangled.org/did:plc:ofrbh253gwicbkc5nktqepol/atproto-connect",
-		"issues": "https://tangled.org/did:plc:ofrbh253gwicbkc5nktqepol/atproto-connect/issues"
+		"homepage": "https://tangled.org/jollywhoppers.com/socialsync",
+		"sources": "https://tangled.org/jollywhoppers.com/socialsync",
+		"issues": "https://tangled.org/jollywhoppers.com/socialsync/issues"
 	},
-	"license": "CC0-1.0",
+	"license": "AGPL-3.0-only",
 	"icon": "assets/atproto-connect/icon.png",
 	"environment": "*",
 	"entrypoints": {
@@ -50,11 +50,13 @@
 		"fabric-api": "*",
 		"fabric-language-kotlin": "*"
 	},
+	"recommends": {
+		"modmenu": ">=16.0.0"
+	},
 	"custom": {
 		"modmenu": {
 			"links": {
-				"modmenu.discord": "https://discord.gg/socialsync",
-				"modmenu.github": "https://github.com/jollywhoppers/socialsync"
+				"modmenu.github": "https://github.com/ewanc26/jollywhoppers-socialsync"
 			}
 		}
 	}
