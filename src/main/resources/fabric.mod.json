@@ -49,5 +49,13 @@
 		"java": ">=21",
 		"fabric-api": "*",
 		"fabric-language-kotlin": "*"
+	},
+	"custom": {
+		"modmenu": {
+			"links": {
+				"modmenu.discord": "https://discord.gg/socialsync",
+				"modmenu.github": "https://github.com/jollywhoppers/socialsync"
+			}
+		}
 	}
 }

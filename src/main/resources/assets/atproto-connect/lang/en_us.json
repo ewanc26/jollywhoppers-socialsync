@@ -1,0 +1,5 @@
+{
+  "modmenu.nameTranslation.atproto-connect": "Social Sync",
+  "modmenu.summaryTranslation.atproto-connect": "Sync Minecraft stats, achievements, and sessions to AT Protocol (Bluesky/ATmosphere)",
+  "modmenu.descriptionTranslation.atproto-connect": "Links Minecraft players to AT Protocol identities for decentralised identity and data ownership. Sync your gameplay stats, achievements, play sessions, and server status to your AT Protocol personal data server (PDS). Features OAuth authentication, per-player sync consent, per-server configurable stat filtering, and a full ModMenu config screen."
+}
