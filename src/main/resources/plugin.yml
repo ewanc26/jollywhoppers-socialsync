@@ -8,7 +8,7 @@ api-version: '26.1.2'
 commands:
   atproto:
     description: Manage your Social Sync AT Protocol identity
-    usage: /atproto <link|unlink|whoami|status|help|admin>
+    usage: /atproto <login|logout|link|unlink|whoami|status|help|admin>
     aliases: [socialsync]
 permissions:
   socialsync.use:

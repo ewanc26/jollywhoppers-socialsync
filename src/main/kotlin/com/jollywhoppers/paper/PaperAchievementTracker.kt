@@ -3,8 +3,9 @@ package com.jollywhoppers.paper
 import com.jollywhoppers.atproto.server.AchievementSyncStore
 import com.jollywhoppers.atproto.server.AchievementMetadata
 import com.jollywhoppers.atproto.server.AtProtoCollections
+import com.jollywhoppers.atproto.server.BlueskyPostPublisher
 import com.jollywhoppers.atproto.server.RecordManager
-import com.jollywhoppers.atproto.server.ServerAccount
+import com.jollywhoppers.atproto.server.AtProtoSessionManager
 import com.jollywhoppers.atproto.server.ServerIdentity
 import com.jollywhoppers.atproto.server.model.Achievement
 import kotlinx.coroutines.CoroutineScope
@@ -27,6 +28,8 @@ class PaperAchievementTracker(
     private val plugin: JavaPlugin,
     private val scope: CoroutineScope,
     private val recordManager: RecordManager,
+    private val sessionManager: AtProtoSessionManager,
+    private val blueskyPostPublisher: BlueskyPostPublisher,
     private val syncStore: AchievementSyncStore,
 ) : Listener {
     private val json = Json { encodeDefaults = false }
@@ -37,8 +40,8 @@ class PaperAchievementTracker(
         val player = event.player
         val advancementId = event.advancement.key.toString()
         if (syncStore.isSynced(player.uniqueId, advancementId)) return
-        if (!ServerAccount.isConfigured()) {
-            plugin.logger.fine("Achievement $advancementId not published: server AT Protocol account is not configured")
+        if (!sessionManager.hasSession(player.uniqueId)) {
+            plugin.logger.fine("Achievement $advancementId not published: player ${player.name} is not authenticated")
             return
         }
 
@@ -59,12 +62,27 @@ class PaperAchievementTracker(
 
         scope.launch {
             recordManager.createRecord(
-                playerUuid = ServerAccount.SERVER_PLAYER_UUID,
+                playerUuid = player.uniqueId,
                 collection = AtProtoCollections.ACHIEVEMENT,
                 record = json.encodeToJsonElement(Achievement.serializer(), record).jsonObject,
             ).onSuccess {
                 syncStore.markSynced(player.uniqueId, advancementId)
                 plugin.logger.info("Published achievement '$advancementId' for ${player.name}")
+                if (sessionManager.hasSession(player.uniqueId)) {
+                    scope.launch {
+                        blueskyPostPublisher.postAchievement(
+                            playerUuid = player.uniqueId,
+                            playerName = player.name,
+                            achievementId = advancementId,
+                            achievementName = record.achievementName,
+                            category = record.category,
+                            isChallenge = record.isChallenge == true,
+                            serverId = ServerIdentity.buildServerId(),
+                        ).onFailure { error ->
+                            plugin.logger.warning("Failed to post achievement '$advancementId' to Bluesky for ${player.name}: ${error.message}")
+                        }
+                    }
+                }
             }.onFailure { error ->
                 plugin.logger.warning("Failed to publish achievement '$advancementId' for ${player.name}: ${error.message}")
             }

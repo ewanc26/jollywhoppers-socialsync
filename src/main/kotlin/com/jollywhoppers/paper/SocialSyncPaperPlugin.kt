@@ -3,10 +3,12 @@ package com.jollywhoppers.paper
 import com.jollywhoppers.atproto.server.AtProtoClient
 import com.jollywhoppers.atproto.server.AppViewHttpServer
 import com.jollywhoppers.atproto.server.AppViewService
+import com.jollywhoppers.atproto.server.BlueskyPostPublisher
 import com.jollywhoppers.atproto.server.FirehoseSubscriber
 import com.jollywhoppers.atproto.server.AtProtoSessionManager
 import com.jollywhoppers.atproto.server.AchievementSyncStore
 import com.jollywhoppers.atproto.server.PlayerIdentityStore
+import com.jollywhoppers.atproto.server.PlayerStatSyncStore
 import com.jollywhoppers.atproto.server.RecordManager
 import com.jollywhoppers.atproto.server.ServerAccount
 import com.jollywhoppers.security.SecurityAuditor
@@ -31,6 +33,8 @@ class SocialSyncPaperPlugin : JavaPlugin(), CommandExecutor, TabCompleter {
     private lateinit var identityStore: PlayerIdentityStore
     private lateinit var sessionManager: AtProtoSessionManager
     private lateinit var recordManager: RecordManager
+    private lateinit var blueskyPostPublisher: BlueskyPostPublisher
+    private lateinit var playerStatSyncStore: PlayerStatSyncStore
     private lateinit var firehoseSubscriber: FirehoseSubscriber
     private lateinit var appViewServer: AppViewHttpServer
 
@@ -61,6 +65,8 @@ class SocialSyncPaperPlugin : JavaPlugin(), CommandExecutor, TabCompleter {
             }
         }
         recordManager = RecordManager(atProtoClient.xrpcClient, atProtoClient.json, sessionManager)
+        blueskyPostPublisher = BlueskyPostPublisher(recordManager)
+        playerStatSyncStore = PlayerStatSyncStore(dataPath.resolve("player-stat-sync-state.json"))
         identityStore = PlayerIdentityStore(
             dataPath.resolve("player-identities.json"),
             recordManager,
@@ -74,11 +80,13 @@ class SocialSyncPaperPlugin : JavaPlugin(), CommandExecutor, TabCompleter {
                 plugin = this,
                 scope = scope,
                 recordManager = recordManager,
+                sessionManager = sessionManager,
+                blueskyPostPublisher = blueskyPostPublisher,
                 syncStore = AchievementSyncStore(dataPath.resolve("achievement-sync-state.json")),
             ),
             this,
         )
-        val serverDataTracker = PaperServerDataTracker(this, scope, recordManager)
+        val serverDataTracker = PaperServerDataTracker(this, scope, recordManager, sessionManager, blueskyPostPublisher, playerStatSyncStore)
         server.pluginManager.registerEvents(serverDataTracker, this)
         server.globalRegionScheduler.runAtFixedRate(
             this,
@@ -113,6 +121,8 @@ class SocialSyncPaperPlugin : JavaPlugin(), CommandExecutor, TabCompleter {
             return true
         }
         return when (args.firstOrNull()?.lowercase()) {
+            "login" -> login(sender, args.drop(1))
+            "logout" -> logout(sender)
             "admin" -> admin(sender, args.drop(1))
             "link" -> link(sender, args.drop(1).joinToString(" ").trim())
             "unlink" -> unlink(sender)
@@ -120,6 +130,56 @@ class SocialSyncPaperPlugin : JavaPlugin(), CommandExecutor, TabCompleter {
             "status" -> status(sender)
             else -> help(sender)
         }
+    }
+
+    private fun login(sender: CommandSender, args: List<String>): Boolean {
+        val player = sender as? Player ?: return playerOnly(sender)
+        if (args.size != 2) {
+            sender.sendMessage(Component.text("Usage: /atproto login <handle or DID> <app-password>", NamedTextColor.YELLOW))
+            return true
+        }
+        val identifier = args[0]
+        val password = args[1]
+        sender.sendMessage(Component.text("Authenticating your AT Protocol account…", NamedTextColor.YELLOW))
+        scope.launch {
+            val result = atProtoClient.createSession(identifier, password).mapCatching { session ->
+                val pdsUrl = atProtoClient.resolveIdentifier(session.did).getOrThrow().third
+                sessionManager.storeVerifiedSession(
+                    uuid = player.uniqueId,
+                    did = session.did,
+                    handle = session.handle,
+                    pdsUrl = pdsUrl,
+                    accessJwt = session.accessJwt,
+                    refreshJwt = session.refreshJwt,
+                )
+                identityStore.linkIdentity(player.uniqueId, session.did, session.handle)
+                SecurityAuditor.logAuthSuccess(player.uniqueId, session.handle, player.name)
+                session
+            }
+            server.globalRegionScheduler.execute(this@SocialSyncPaperPlugin) {
+                result.onSuccess {
+                    player.sendMessage(Component.text("Authenticated as ${it.handle}.", NamedTextColor.GREEN))
+                }.onFailure {
+                    player.sendMessage(Component.text("Authentication failed.", NamedTextColor.RED))
+                    logger.warning("Player AT Protocol login failed for ${player.uniqueId}: ${it.javaClass.simpleName}")
+                }
+            }
+        }
+        return true
+    }
+
+    private fun logout(sender: CommandSender): Boolean {
+        val player = sender as? Player ?: return playerOnly(sender)
+        val identity = identityStore.getIdentity(player.uniqueId)
+        val removed = sessionManager.deleteSession(player.uniqueId)
+        if (identity != null) {
+            SecurityAuditor.logLogout(player.uniqueId, identity.handle, player.name)
+        }
+        sender.sendMessage(
+            if (removed) Component.text("Logged out.", NamedTextColor.GREEN)
+            else Component.text("No authenticated session found.", NamedTextColor.YELLOW)
+        )
+        return true
     }
 
     private fun admin(sender: CommandSender, args: List<String>): Boolean {
@@ -213,11 +273,14 @@ class SocialSyncPaperPlugin : JavaPlugin(), CommandExecutor, TabCompleter {
     private fun status(sender: CommandSender): Boolean {
         sender.sendMessage(Component.text("Social Sync ${pluginMeta.version}", NamedTextColor.AQUA))
         sender.sendMessage(Component.text("Linked players: ${identityStore.getAllIdentities().size}", NamedTextColor.GRAY))
+        sender.sendMessage(Component.text("Authenticated players: ${sessionManager.getAllSessions().size}", NamedTextColor.GRAY))
         sender.sendMessage(Component.text("Paper API target: 26.1.2", NamedTextColor.GRAY))
         return true
     }
 
     private fun help(sender: CommandSender): Boolean {
+        sender.sendMessage(Component.text("/atproto login <handle or DID> <app-password>", NamedTextColor.AQUA))
+        sender.sendMessage(Component.text("/atproto logout", NamedTextColor.AQUA))
         sender.sendMessage(Component.text("/atproto link <handle or DID>", NamedTextColor.AQUA))
         sender.sendMessage(Component.text("/atproto unlink | whoami | status", NamedTextColor.AQUA))
         return true
@@ -234,7 +297,7 @@ class SocialSyncPaperPlugin : JavaPlugin(), CommandExecutor, TabCompleter {
         alias: String,
         args: Array<out String>,
     ): List<String> = if (args.size == 1) {
-        listOf("link", "unlink", "whoami", "status", "help", "admin").filter { it.startsWith(args[0], true) }
+        listOf("login", "logout", "link", "unlink", "whoami", "status", "help", "admin").filter { it.startsWith(args[0], true) }
     } else emptyList()
 
     private fun safeMessage(error: Throwable): String = when {

@@ -21,6 +21,8 @@ Plugin data is stored under `plugins/SocialSync/`. The plugin shades its Kotlin,
 | Command | Description |
 |---|---|
 | `/atproto link <handle or DID>` | Resolve and link an AT Protocol identity |
+| `/atproto login <handle or DID> <app-password>` | Authenticate the player's own AT Protocol account |
+| `/atproto logout` | Remove the player's authenticated session |
 | `/atproto unlink` | Remove the player's identity link |
 | `/atproto whoami` | Display the linked identity |
 | `/atproto status` | Display plugin and link-store status |
@@ -31,9 +33,9 @@ Plugin data is stored under `plugins/SocialSync/`. The plugin shades its Kotlin,
 
 ## Architecture
 
-Social Sync is a server-side Paper plugin. Identity resolution, secure persistence, achievement tracking, session tracking, periodic server-status publishing, AT Protocol records, AppView/firehose components, security auditing, and the HTTP client are packaged in the plugin JAR.
+Social Sync is a server-side Paper plugin. Identity resolution, secure persistence, achievement tracking, session tracking, periodic server-status publishing, automatic Bluesky feed posts, AT Protocol records, AppView/firehose components, security auditing, and the HTTP client are packaged in the plugin JAR.
 
-Completed advancements are published once per player. Session records are published on disconnect and server status is refreshed every five minutes. These publishing features require a server AT Protocol account configured with the admin login command.
+Completed advancements are published once per player. Session records are published on disconnect and server status is refreshed every five minutes. Achievement unlocks and player stat summaries are mirrored to each player's own Bluesky feed when that player has authenticated their account, and server-status posts are emitted when the visible snapshot changes. The player feed posts stay under Bluesky's 300-character limit.
 
 ## Development
 
