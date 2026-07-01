@@ -436,7 +436,7 @@ AppView Service
 **Step 1: Install Dependencies**
 ```bash
 # Install Paper 26.1.2 and Java 25+
-# Copy build/libs/socialsync-paper-0.6.0-SNAPSHOT.jar to plugins/
+# Copy build/libs/socialsync-0.7.0-Paper.jar to plugins/
 ```
 
 **Step 2: Install Mod**
