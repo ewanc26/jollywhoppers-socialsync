@@ -21,6 +21,8 @@ import org.slf4j.LoggerFactory
  * ModMenu configuration screen for SocialSync.
  * Exposes all client preferences: authentication, sync consent,
  * sync frequency, UI preferences, and privacy settings.
+ *
+ * All user-facing config goes through this screen — no chat commands for config.
  */
 class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.literal("SocialSync Settings")) {
 
@@ -53,6 +55,17 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
     private val sectionSpacing: Int
         get() = if (isCompact) 24 else 30
 
+    // Section header Y positions (tracked during init, used in render)
+    private var authHeaderY = 0
+    private var syncConsentHeaderY = 0
+    private var syncFreqHeaderY = 0
+    private var uiHeaderY = 0
+    private var privacyHeaderY = 0
+
+    // Scrolling support
+    private var scrollOffset = 0
+    private var contentHeight = 0
+
     override fun init() {
         super.init()
 
@@ -60,20 +73,38 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
         val prefs = PreferencesManager.get()
         var y = if (isCompact) 30 else 40
 
+        // Track section header positions
+        authHeaderY = y
+        y += if (isCompact) 16 else 20
+
         // ── Authentication ──────────────────────────────────────
         y = addAuthSection(centerX, y, prefs)
 
         // ── Sync Consent ────────────────────────────────────────
+        syncConsentHeaderY = y
+        y += if (isCompact) 16 else 20
         y = addSyncConsentSection(centerX, y, prefs)
 
         // ── Sync Frequency ───────────────────────────────────────
+        syncFreqHeaderY = y
+        y += if (isCompact) 16 else 20
         y = addSyncFrequencySection(centerX, y, prefs)
 
         // ── UI Preferences ──────────────────────────────────────
+        uiHeaderY = y
+        y += if (isCompact) 16 else 20
         y = addUISection(centerX, y, prefs)
 
         // ── Privacy ─────────────────────────────────────────────
+        privacyHeaderY = y
+        y += if (isCompact) 16 else 20
         y = addPrivacySection(centerX, y, prefs)
+
+        contentHeight = y + 40
+
+        // Clamp scroll offset
+        val maxScroll = maxScrollOffset()
+        scrollOffset = scrollOffset.coerceIn(0, maxScroll)
 
         // ── Bottom bar ──────────────────────────────────────────
         addRenderableWidget(
@@ -126,7 +157,7 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
                     Component.literal("Logout"),
                     Button.OnPress { onLogoutClicked() }
                 )
-                    .bounds(centerX - 75, y + 36, 150, buttonHeight)
+                    .bounds(centerX - 75, scrolledY(y + 36), 150, buttonHeight)
                     .build()
             )
 
@@ -135,7 +166,7 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
             // Login fields
             handleField = EditBox(
                 minecraft!!.font,
-                centerX - 150, y + 12,
+                centerX - 150, scrolledY(y + 12),
                 300, 20,
                 Component.literal("Handle or DID")
             ).apply {
@@ -146,7 +177,7 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
 
             passwordField = EditBox(
                 minecraft!!.font,
-                centerX - 150, y + 42,
+                centerX - 150, scrolledY(y + 42),
                 300, 20,
                 Component.literal("App Password")
             ).apply {
@@ -160,7 +191,7 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
                     Component.literal("OAuth Login"),
                     Button.OnPress { onOAuthClicked() }
                 )
-                    .bounds(centerX - 155, y + 70, 150, 20)
+                    .bounds(centerX - 155, scrolledY(y + 70), 150, 20)
                     .build()
             )
 
@@ -169,7 +200,7 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
                     Component.literal("App Password Login"),
                     Button.OnPress { onLoginClicked() }
                 )
-                    .bounds(centerX + 5, y + 70, 150, 20)
+                    .bounds(centerX + 5, scrolledY(y + 70), 150, 20)
                     .build()
             )
 
@@ -187,7 +218,7 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
                 Component.literal("Stats: ${if (prefs.syncStatsEnabled) "§aOn" else "§cOff"}"),
                 Button.OnPress { toggleSyncConsent("stats") }
             )
-                .bounds(centerX - 155, y, 150, buttonHeight)
+                .bounds(centerX - 155, scrolledY(y), 150, buttonHeight)
                 .build()
         )
 
@@ -196,18 +227,18 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
                 Component.literal("Sessions: ${if (prefs.syncSessionsEnabled) "§aOn" else "§cOff"}"),
                 Button.OnPress { toggleSyncConsent("sessions") }
             )
-                .bounds(centerX + 5, y, 150, buttonHeight)
+                .bounds(centerX + 5, scrolledY(y), 150, buttonHeight)
                 .build()
         )
 
-        y += 24
+        y += rowSpacing
 
         addRenderableWidget(
             Button.builder(
                 Component.literal("Achievements: ${if (prefs.syncAchievementsEnabled) "§aOn" else "§cOff"}"),
                 Button.OnPress { toggleSyncConsent("achievements") }
             )
-                .bounds(centerX - 155, y, 150, buttonHeight)
+                .bounds(centerX - 155, scrolledY(y), 150, buttonHeight)
                 .build()
         )
 
@@ -216,11 +247,11 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
                 Component.literal("Server Status: ${if (prefs.syncServerStatusEnabled) "§aOn" else "§cOff"}"),
                 Button.OnPress { toggleSyncConsent("server-status") }
             )
-                .bounds(centerX + 5, y, 150, buttonHeight)
+                .bounds(centerX + 5, scrolledY(y), 150, buttonHeight)
                 .build()
         )
 
-        return y + 30
+        return y + sectionSpacing
     }
 
     private fun addSyncFrequencySection(centerX: Int, startY: Int, prefs: ClientPreferences): Int {
@@ -231,7 +262,7 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
                 Component.literal("Stats: ${prefs.statsSyncFrequency}m"),
                 Button.OnPress { cycleFrequency("stats") }
             )
-                .bounds(centerX - 155, y, 150, buttonHeight)
+                .bounds(centerX - 155, scrolledY(y), 150, buttonHeight)
                 .build()
         )
 
@@ -240,22 +271,22 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
                 Component.literal("Sessions: ${prefs.sessionSyncFrequency}m"),
                 Button.OnPress { cycleFrequency("sessions") }
             )
-                .bounds(centerX + 5, y, 150, buttonHeight)
+                .bounds(centerX + 5, scrolledY(y), 150, buttonHeight)
                 .build()
         )
 
-        y += 24
+        y += rowSpacing
 
         addRenderableWidget(
             Button.builder(
                 Component.literal("Achievements: ${prefs.achievementSyncFrequency}m"),
                 Button.OnPress { cycleFrequency("achievements") }
             )
-                .bounds(centerX - 155, y, 150, buttonHeight)
+                .bounds(centerX - 155, scrolledY(y), 150, buttonHeight)
                 .build()
         )
 
-        return y + 30
+        return y + sectionSpacing
     }
 
     private fun addUISection(centerX: Int, startY: Int, prefs: ClientPreferences): Int {
@@ -266,7 +297,7 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
                 Component.literal("Notifications: ${if (prefs.showSyncNotifications) "§aOn" else "§cOff"}"),
                 Button.OnPress { togglePreference("showSyncNotifications") }
             )
-                .bounds(centerX - 155, y, 150, buttonHeight)
+                .bounds(centerX - 155, scrolledY(y), 150, buttonHeight)
                 .build()
         )
 
@@ -275,22 +306,22 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
                 Component.literal("F3 Status: ${if (prefs.showStatusInF3) "§aOn" else "§cOff"}"),
                 Button.OnPress { togglePreference("showStatusInF3") }
             )
-                .bounds(centerX + 5, y, 150, buttonHeight)
+                .bounds(centerX + 5, scrolledY(y), 150, buttonHeight)
                 .build()
         )
 
-        y += 24
+        y += rowSpacing
 
         addRenderableWidget(
             Button.builder(
                 Component.literal("Compact Layout: ${if (prefs.compactModMenuLayout) "§aOn" else "§cOff"}"),
                 Button.OnPress { togglePreference("compactModMenuLayout") }
             )
-                .bounds(centerX - 155, y, 150, buttonHeight)
+                .bounds(centerX - 155, scrolledY(y), 150, buttonHeight)
                 .build()
         )
 
-        return y + 30
+        return y + sectionSpacing
     }
 
     private fun addPrivacySection(centerX: Int, startY: Int, prefs: ClientPreferences): Int {
@@ -301,7 +332,7 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
                 Component.literal("Encrypt Storage: ${if (prefs.encryptedLocalStorage) "§aOn" else "§cOff"}"),
                 Button.OnPress { togglePreference("encryptedLocalStorage") }
             )
-                .bounds(centerX - 155, y, 150, buttonHeight)
+                .bounds(centerX - 155, scrolledY(y), 150, buttonHeight)
                 .build()
         )
 
@@ -310,11 +341,11 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
                 Component.literal("Clear on Logout: ${if (prefs.clearLocalCacheOnLogout) "§aOn" else "§cOff"}"),
                 Button.OnPress { togglePreference("clearLocalCacheOnLogout") }
             )
-                .bounds(centerX + 5, y, 150, buttonHeight)
+                .bounds(centerX + 5, scrolledY(y), 150, buttonHeight)
                 .build()
         )
 
-        return y + 30
+        return y + sectionSpacing
     }
 
     // ── Rendering ────────────────────────────────────────────────
@@ -322,37 +353,25 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
     override fun render(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
         renderBackground(graphics, mouseX, mouseY, partialTick)
 
-        // Title
+        // Title (fixed at top, not scrolled)
         graphics.drawCenteredString(font, title, width / 2, 12, 0xFFFFFF)
 
-        // Section headers
-        val prefs = PreferencesManager.get()
-        val hasSession = sessionManager.hasSession()
-        var headerY = 30
+        // Enable scissor for scrollable content area
+        val scrollAreaTop = 28
+        val scrollAreaBottom = height - 35
+        graphics.enableScissor(0, scrollAreaTop, width, scrollAreaBottom)
 
-        // Auth header
-        graphics.drawCenteredString(font, "§nAuthentication", width / 2, headerY, 0xA0A0A0)
-
-        // Sync consent header
-        headerY = if (hasSession) 110 else 140
-        graphics.drawCenteredString(font, "§nSync Consent", width / 2, headerY, 0xA0A0A0)
-
-        // Sync frequency header
-        headerY += 78
-        graphics.drawCenteredString(font, "§nSync Frequency", width / 2, headerY, 0xA0A0A0)
-
-        // UI header
-        headerY += 60
-        graphics.drawCenteredString(font, "§nUI", width / 2, headerY, 0xA0A0A0)
-
-        // Privacy header
-        headerY += 60
-        graphics.drawCenteredString(font, "§nPrivacy", width / 2, headerY, 0xA0A0A0)
+        // Section headers — positions tracked from init()
+        graphics.drawCenteredString(font, "§nAuthentication", width / 2, authHeaderY - scrollOffset, 0xA0A0A0)
+        graphics.drawCenteredString(font, "§nSync Consent", width / 2, syncConsentHeaderY - scrollOffset, 0xA0A0A0)
+        graphics.drawCenteredString(font, "§nSync Frequency", width / 2, syncFreqHeaderY - scrollOffset, 0xA0A0A0)
+        graphics.drawCenteredString(font, "§nUI", width / 2, uiHeaderY - scrollOffset, 0xA0A0A0)
+        graphics.drawCenteredString(font, "§nPrivacy", width / 2, privacyHeaderY - scrollOffset, 0xA0A0A0)
 
         // Auth status text
         statusText?.let { status ->
             val lines = font.split(status, width - 40)
-            var y = 46
+            var y = authHeaderY - scrollOffset + 20
             for (line in lines) {
                 graphics.drawCenteredString(font, line, width / 2, y, 0xFFFFFF)
                 y += 12
@@ -360,12 +379,14 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
         }
 
         // Labels for auth fields (when not logged in)
-        if (!hasSession) {
-            graphics.drawString(font, "Handle or DID:", width / 2 - 150, 42, 0xA0A0A0)
-            graphics.drawString(font, "App Password:", width / 2 - 150, 72, 0xA0A0A0)
+        if (!sessionManager.hasSession()) {
+            graphics.drawString(font, "Handle or DID:", width / 2 - 150, authHeaderY - scrollOffset + 12, 0xA0A0A0)
+            graphics.drawString(font, "App Password:", width / 2 - 150, authHeaderY - scrollOffset + 42, 0xA0A0A0)
         }
 
-        // Security notice
+        graphics.disableScissor()
+
+        // Security notice (fixed at bottom, not scrolled)
         val securityNotice = if (sessionManager.isOAuthSession()) {
             Component.literal("§aOAuth session active")
         } else if (sessionManager.hasSession()) {
@@ -377,6 +398,21 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
 
         super.render(graphics, mouseX, mouseY, partialTick)
     }
+
+    // ── Scrolling ────────────────────────────────────────────────
+
+    override fun mouseScrolled(mouseX: Double, mouseY: Double, scrollX: Double, scrollY: Double): Boolean {
+        val maxScroll = maxScrollOffset()
+        if (maxScroll > 0) {
+            scrollOffset = (scrollOffset - scrollY.toInt() * 10).coerceIn(0, maxScroll)
+            rebuildWidgets()
+        }
+        return true
+    }
+
+    private fun scrolledY(y: Int): Int = y - scrollOffset
+
+    private fun maxScrollOffset(): Int = (contentHeight - (height - 35)).coerceAtLeast(0)
 
     // ── Auth actions ─────────────────────────────────────────────
 
@@ -570,5 +606,5 @@ class AtProtoConfigScreen(private val parent: Screen?) : Screen(Component.litera
         minecraft?.setScreen(parent)
     }
 
-    override fun isPauseScreen(): Boolean = true
+    override fun isPauseScreen(): Boolean = false
 }

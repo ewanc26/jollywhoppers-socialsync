@@ -60,10 +60,6 @@ class AtProtoCommands(
                         .executes { context -> unlinkIdentity(context) }
                 )
                 .then(
-                    Commands.literal("logout")
-                        .executes { context -> logout(context) }
-                )
-                .then(
                     Commands.literal("whoami")
                         .executes { context -> whoami(context) }
                 )
@@ -81,50 +77,6 @@ class AtProtoCommands(
                 .then(
                     Commands.literal("sync")
                         .executes { context -> syncConsentStatus(context) }
-                        .then(
-                            Commands.literal("stats")
-                                .then(
-                                    Commands.literal("on")
-                                        .executes { context -> setSyncConsent(context, syncStats = true) }
-                                )
-                                .then(
-                                    Commands.literal("off")
-                                        .executes { context -> setSyncConsent(context, syncStats = false) }
-                                )
-                        )
-                        .then(
-                            Commands.literal("sessions")
-                                .then(
-                                    Commands.literal("on")
-                                        .executes { context -> setSyncConsent(context, syncSessions = true) }
-                                )
-                                .then(
-                                    Commands.literal("off")
-                                        .executes { context -> setSyncConsent(context, syncSessions = false) }
-                                )
-                        )
-                        .then(
-                            Commands.literal("achievements")
-                                .then(
-                                    Commands.literal("on")
-                                        .executes { context -> setSyncConsent(context, syncAchievements = true) }
-                                )
-                                .then(
-                                    Commands.literal("off")
-                                        .executes { context -> setSyncConsent(context, syncAchievements = false) }
-                                )
-                        )
-                        .then(
-                            Commands.literal("server-status")
-                                .then(
-                                    Commands.literal("on")
-                                        .executes { context -> setSyncConsent(context, syncServerStatus = true) }
-                                )
-                                .then(
-                                    Commands.literal("off")
-                                        .executes { context -> setSyncConsent(context, syncServerStatus = false) }
-                                )
-                        )
                 )
                 .then(
                     Commands.literal("profile")
@@ -275,39 +227,6 @@ class AtProtoCommands(
         } else {
             context.source.sendFailure(
                 Component.literal("§c✗ You don't have a linked AT Protocol identity")
-            )
-            0
-        }
-    }
-
-    /**
-     * Logs out a player (removes their authentication session).
-     */
-    private fun logout(context: CommandContext<CommandSourceStack>): Int {
-        val player = context.source.playerOrException
-        val identity = identityStore.getIdentity(player.uuid)
-        
-        return if (sessionManager.hasSession(player.uuid)) {
-            sessionManager.deleteSession(player.uuid)
-            
-            // Audit log
-            if (identity != null) {
-                SecurityAuditor.logLogout(player.uuid, identity.handle, player.name.string)
-            }
-            
-            context.source.sendSuccess(
-                {
-                    Component.literal("§a✓ Logged out successfully")
-                        .append(Component.literal("\n§7Your identity link remains active"))
-                        .append(Component.literal("\n§7Use the mod config screen to authenticate again"))
-                },
-                false
-            )
-            logger.info("Player ${player.name.string} (${player.uuid}) logged out")
-            1
-        } else {
-            context.source.sendFailure(
-                Component.literal("§c✗ You are not logged in")
             )
             0
         }
@@ -491,78 +410,10 @@ class AtProtoCommands(
                     .append(Component.literal("\n§7Achievement syncing: ${if (prefs.syncAchievementsEnabled) "§aOn" else "§cOff"}"))
                     .append(Component.literal("\n§7Server status syncing: ${if (prefs.syncServerStatusEnabled) "§aOn" else "§cOff"}"))
                     .append(Component.literal("\n"))
-                    .append(Component.literal("\n§7Use §f/atproto sync stats <on|off>"))
-                    .append(Component.literal("\n§7Use §f/atproto sync sessions <on|off>"))
-                    .append(Component.literal("\n§7Use §f/atproto sync achievements <on|off>"))
-                    .append(Component.literal("\n§7Use §f/atproto sync server-status <on|off>"))
+                    .append(Component.literal("\n§eTo change these settings, use the ModMenu config screen."))
             },
             false
         )
-        return 1
-    }
-
-    /**
-     * Sets a sync consent setting.
-     */
-    private fun setSyncConsent(
-        context: CommandContext<CommandSourceStack>,
-        syncStats: Boolean? = null,
-        syncSessions: Boolean? = null,
-        syncAchievements: Boolean? = null,
-        syncServerStatus: Boolean? = null,
-    ): Int {
-        val player = context.source.playerOrException
-
-        if (!identityStore.isLinked(player.uuid)) {
-            context.source.sendFailure(
-                Component.literal("§cYou are not linked to an AT Protocol identity")
-            )
-            return 0
-        }
-
-        syncPreferencesStore.update(
-            playerId = player.uuid,
-            username = player.name.string,
-            stats = syncStats,
-            sessions = syncSessions,
-            achievements = syncAchievements,
-            serverStatus = syncServerStatus,
-        )
-
-        val updated = syncPreferencesStore.getOrDefault(player.uuid)
-
-        val changes = buildString {
-            if (syncStats != null) {
-                append("\n§7Stats syncing: ${if (updated.syncStatsEnabled) "§aOn" else "§cOff"}")
-            }
-            if (syncSessions != null) {
-                append("\n§7Session syncing: ${if (updated.syncSessionsEnabled) "§aOn" else "§cOff"}")
-            }
-            if (syncAchievements != null) {
-                append("\n§7Achievement syncing: ${if (updated.syncAchievementsEnabled) "§aOn" else "§cOff"}")
-            }
-            if (syncServerStatus != null) {
-                append("\n§7Server status syncing: ${if (updated.syncServerStatusEnabled) "§aOn" else "§cOff"}")
-            }
-        }
-
-        context.source.sendSuccess(
-            {
-                Component.literal("§a✓ Sync consent updated")
-                    .append(Component.literal(changes))
-            },
-            false
-        )
-
-        SecurityAuditor.logSyncPreferenceChange(
-            playerId = player.uuid,
-            playerName = player.name.string,
-            stats = updated.syncStatsEnabled,
-            sessions = updated.syncSessionsEnabled,
-            achievements = updated.syncAchievementsEnabled,
-            serverStatus = updated.syncServerStatusEnabled,
-        )
-
         return 1
     }
 
@@ -572,16 +423,13 @@ class AtProtoCommands(
     private fun help(context: CommandContext<CommandSourceStack>): Int {
         context.source.sendSuccess(
             {
-                Component.literal("§b━━━ AT Protocol Commands (Server) ━━━")
+                Component.literal("§b━━━ AT Protocol Commands ━━━")
                     .append(Component.literal("\n§f/atproto link <handle or DID>"))
                     .append(Component.literal("\n  §7Link your Minecraft account to your AT Protocol identity"))
                     .append(Component.literal("\n  §7Example: §f/atproto link alice.bsky.social"))
                     .append(Component.literal("\n"))
                     .append(Component.literal("\n§f/atproto unlink"))
                     .append(Component.literal("\n  §7Unlink your AT Protocol identity completely"))
-                    .append(Component.literal("\n"))
-                    .append(Component.literal("\n§f/atproto logout"))
-                    .append(Component.literal("\n  §7Log out (removes authentication from server)"))
                     .append(Component.literal("\n"))
                     .append(Component.literal("\n§f/atproto whoami"))
                     .append(Component.literal("\n  §7View your linked identity and authentication status"))
@@ -590,21 +438,17 @@ class AtProtoCommands(
                     .append(Component.literal("\n  §7Check connection status"))
                     .append(Component.literal("\n"))
                     .append(Component.literal("\n§f/atproto sync"))
-                    .append(Component.literal("\n  §7View your sync consent settings"))
-                    .append(Component.literal("\n§f/atproto sync stats <on|off>"))
-                    .append(Component.literal("\n  §7Control whether your stats are synced"))
-                    .append(Component.literal("\n§f/atproto sync sessions <on|off>"))
-                    .append(Component.literal("\n  §7Control whether your sessions are synced"))
-                    .append(Component.literal("\n§f/atproto sync achievements <on|off>"))
-                    .append(Component.literal("\n  §7Control whether your achievements are synced"))
-                    .append(Component.literal("\n§f/atproto sync server-status <on|off>"))
-                    .append(Component.literal("\n  §7Control whether server status is synced"))
+                    .append(Component.literal("\n  §7View your current sync consent settings"))
+                    .append(Component.literal("\n  §7§eTo change settings, use the ModMenu config screen"))
                     .append(Component.literal("\n"))
                     .append(Component.literal("\n§7Note: AT Protocol data is §falways public§7."))
                     .append(Component.literal("\n§7Turning sync off prevents data from being written."))
                     .append(Component.literal("\n"))
                     .append(Component.literal("\n§f/atproto whois <player or handle>"))
                     .append(Component.literal("\n  §7Look up another player's AT Protocol identity"))
+                    .append(Component.literal("\n"))
+                    .append(Component.literal("\n§f/atproto profile <player>"))
+                    .append(Component.literal("\n  §7View a player's synced profile"))
                     .append(Component.literal("\n"))
                     .append(Component.literal("\n§f/atproto export <player>"))
                     .append(Component.literal("\n  §7Export a player's synced AT Protocol records as JSON"))
@@ -621,13 +465,17 @@ class AtProtoCommands(
                     .append(Component.literal("\n  §7Remove a player's identity link"))
                     .append(Component.literal("\n§f/atproto admin status"))
                     .append(Component.literal("\n  §7Show system status"))
+                    .append(Component.literal("\n§f/atproto admin sync-stats"))
+                    .append(Component.literal("\n  §7Force immediate stat sync check"))
+                    .append(Component.literal("\n§f/atproto admin sync-server"))
+                    .append(Component.literal("\n  §7Force immediate server status sync"))
+                    .append(Component.literal("\n§f/atproto admin reload-stats-filter"))
+                    .append(Component.literal("\n  §7Reload stats filter config from disk"))
                     .append(Component.literal("\n"))
-                    .append(Component.literal("\n§e━━━ Client-Side Login (Type in Client) ━━━"))
-                    .append(Component.literal("\n§eFor authentication, use the client-side commands:"))
-                    .append(Component.literal("\n§f/atproto login <handle>"))
-                    .append(Component.literal("\n  §7Login is handled client-side (use the mod config screen)"))
-                    .append(Component.literal("\n§7Authentication happens on your computer"))
-                    .append(Component.literal("\n§7Your password never goes to the server!"))
+                    .append(Component.literal("\n§e━━━ Configuration ━━━"))
+                    .append(Component.literal("\n§eAll user-facing config (authentication, sync consent,"))
+                    .append(Component.literal("\n§efrequencies, privacy) is in the ModMenu config screen."))
+                    .append(Component.literal("\n§eOpen ModMenu → find Social Sync → click the config button."))
             },
             false
         )

@@ -42,18 +42,15 @@ Core features are shipped. What's still missing:
 |---|---|
 | `/atproto link <handle or DID>` | Link your Minecraft UUID to your AT Protocol identity |
 | `/atproto unlink` | Remove the link |
-| `/atproto logout` | Log out without unlinking |
 | `/atproto whoami` | See your linked identity and auth status |
 | `/atproto status` | Quick status check |
 | `/atproto whois <player or handle>` | Look up another player's identity |
-| `/atproto sync` | View and toggle sync consent |
-| `/atproto sync stats <on|off>` | Stats sync toggle |
-| `/atproto sync sessions <on|off>` | Sessions sync toggle |
-| `/atproto sync achievements <on|off>` | Achievements sync toggle |
-| `/atproto sync server-status <on|off>` | Server status sync toggle |
+| `/atproto sync` | View current sync consent settings |
+| `/atproto profile <player>` | View a player's synced profile |
+| `/atproto export <player>` | Export a player's synced records as JSON |
 | `/atproto admin ...` | Admin commands (op level 4) — includes force-sync diagnostics and reloading the stats filter config |
 
-The simpler workflow is the ModMenu config screen, which covers authentication and all the sync toggles without typing anything.
+All user-facing configuration — authentication, sync consent toggles, sync frequencies, UI preferences, and privacy settings — is handled through the ModMenu config screen. Open ModMenu, find Social Sync, and click the config button.
 
 ## Getting an App Password
 
@@ -62,7 +59,7 @@ If you're not using OAuth:
 1. Go to your PDS settings (if you're on Bluesky, it's Settings → Privacy and Security → App Passwords)
 2. Create one with a sensible name, like "Minecraft Server"
 3. Copy it immediately — you won't see it again
-4. Paste it in the config screen or use `/atproto login`
+4. Paste it in the ModMenu config screen
 
 Never use your main account password. That's what app passwords exist to avoid.
 
@@ -182,6 +179,6 @@ This is an experimental project exploring the intersection of decentralised prot
 
 ---
 
-**Version**: 0.5.1
+**Version**: 0.5.2
 **Repository**: `git@tangled.sh:jollywhoppers.com/socialsync`
 **Status**: Alpha — don't rely on it yet
