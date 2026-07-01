@@ -184,6 +184,10 @@ class AtProtoCommands(
                             Commands.literal("sync-server")
                                 .executes { context -> adminForceSyncServer(context) }
                         )
+                        .then(
+                            Commands.literal("reload-stats-filter")
+                                .executes { context -> adminReloadStatsFilter(context) }
+                        )
                 )
                 .executes { context -> help(context) }
         )
@@ -849,10 +853,10 @@ class AtProtoCommands(
                 }
 
                 val collections = listOf(
-                    "com.jollywhoppers.minecraft.player.profile",
-                    "com.jollywhoppers.minecraft.player.stats",
-                    "com.jollywhoppers.minecraft.achievement",
-                    "com.jollywhoppers.minecraft.player.session",
+                    AtProtoCollections.PLAYER_PROFILE,
+                    AtProtoCollections.PLAYER_STATS,
+                    AtProtoCollections.ACHIEVEMENT,
+                    AtProtoCollections.PLAYER_SESSION,
                 )
 
                 val exportJson = buildJsonObject {
@@ -1034,6 +1038,31 @@ class AtProtoCommands(
         }
     }
     
+    /**
+     * Reloads the stats filter config from disk at runtime (admin only).
+     * Server operators can edit `config/atproto-connect/stats-filter-config.json`
+     * and use this command to apply changes without a server restart.
+     */
+    private fun adminReloadStatsFilter(context: CommandContext<CommandSourceStack>): Int {
+        val source = context.source
+        val configDir = FabricLoader.getInstance().configDir.resolve("atproto-connect")
+        try {
+            com.jollywhoppers.socialsync.statSyncService.reloadFilterConfig(configDir)
+            source.sendSuccess(
+                { Component.literal("§a✓ Stats filter config reloaded from disk") },
+                true
+            )
+            logger.info("Stats filter config reloaded by admin")
+            return 1
+        } catch (e: Exception) {
+            source.sendFailure(
+                Component.literal("§c✗ Failed to reload stats filter config: ${e.message}")
+            )
+            logger.error("Failed to reload stats filter config", e)
+            return 0
+        }
+    }
+
     /**
      * Sanitizes error messages to avoid leaking sensitive information.
      */
