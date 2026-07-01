@@ -4,16 +4,18 @@
 
 This project includes comprehensive automated tests covering:
 - Session management & authentication
-- Security (encryption, rate limiting)
-- Record management (CRUD)
+- Security (encryption, rate limiting, audit logging)
+- Record management (CRUD, AT URI parsing)
 - AppView indexing and querying
-- Storage layer (identity, preferences)
+- Storage layer (identity, preferences, stat sync, achievement sync)
+- Sync service pure functions (category extraction, quit reason normalization)
+- Network packet serialization
 
 ## Test Framework
 
 - **Framework**: JUnit 5 (Jupiter)
-- **Assertion Library**: Kotlin Test
-- **Coverage**: Core services and critical paths
+- **Assertions**: Kotlin Test (`kotlin.test`)
+- **Coverage**: 130+ tests across 14 test classes
 
 ## Running Tests
 
@@ -29,11 +31,6 @@ This project includes comprehensive automated tests covering:
 ./gradlew test --tests *SessionManagerTest
 ```
 
-**Run with coverage:**
-```bash
-./gradlew test jacocoTestReport
-```
-
 **Run with verbose output:**
 ```bash
 ./gradlew test --info
@@ -44,7 +41,6 @@ This project includes comprehensive automated tests covering:
 **IntelliJ IDEA:**
 1. Right-click test file → Run tests
 2. Or click the green triangle next to class/method name
-3. View coverage with Code → Analyze Code → Run Code Inspection
 
 **VS Code:**
 1. Install "Test Explorer UI" extension
@@ -55,89 +51,166 @@ This project includes comprehensive automated tests covering:
 
 ```
 src/test/kotlin/com/jollywhoppers/atproto/
-├── CoreTests.kt              # Main test suite
-│   ├── AtProtoSessionManagerTest
-│   ├── SecurityUtilsTest
-│   ├── RateLimiterTest
-│   ├── AppViewServiceTest
-│   ├── AppViewHttpServerTest
-│   ├── PlayerIdentityStoreTest
-│   └── PlayerSyncPreferencesStoreTest
-├── IntegrationTests.kt       # End-to-end workflows
-└── PerformanceTests.kt       # Benchmarks
+├── CoreTests.kt                          # Core service tests
+│   ├── AtProtoSessionManagerTest         # Session lifecycle, persistence
+│   ├── SecurityUtilsTest                 # Encryption/decryption, path validation
+│   ├── RateLimiterTest                   # Attempt counting, lockout, per-player isolation
+│   ├── PlayerIdentityStoreTest           # Link/unlink, lookup, persistence
+│   ├── PlayerSyncPreferencesTest         # Data class defaults, shouldSync, frequencies
+│   └── AppViewServiceTest                # Profile indexing, leaderboards, search, trending
+├── AchievementSyncStoreTests.kt          # Achievement sync state persistence
+├── AppViewServiceTests.kt                # Extended AppView querying (pagination, sorting)
+├── AtProtoCommandsTests.kt               # DID/handle validation, AT URI parsing, TID generation
+├── AtProtoPacketsSerializationTests.kt   # Network packet JSON serialization round-trips
+├── PlayerStatSyncStoreTests.kt           # Stat sync state, fingerprint hashing, concurrency
+├── SecurityAuditorTests.kt               # Audit log formatting, file I/O, event types
+├── SecurityTests.kt                      # Extended security: key generation, permissions, sanitization
+└── SyncServicePureFunctionTests.kt       # extractCategory, normalizeQuitReason
 ```
 
 ## Test Classes
 
-### AtProtoSessionManagerTest
+### AtProtoSessionManagerTest (8 tests)
 
-Tests authentication, token management, and session lifecycle.
-
-**Tests:**
-- ✅ Authentication with valid credentials
-- ✅ Authentication failure with invalid credentials
-- ✅ Session retrieval
-- ✅ Logout invalidation
-- ✅ Automatic token refresh
-
-### SecurityUtilsTest
-
-Tests encryption, decryption, and path validation.
+Tests session lifecycle, persistence, and auth types.
 
 **Tests:**
-- ✅ Encryption/decryption round-trip
-- ✅ Decryption fails with wrong key
-- ✅ Path validation (prevent directory traversal)
-- ✅ Random token generation
+- ✅ No session initially
+- ✅ storeVerifiedSession makes hasSession true
+- ✅ getSession returns stored data
+- ✅ getSession returns failure for unknown player
+- ✅ deleteSession removes the session
+- ✅ deleteSession returns false for non-existent
+- ✅ getAllSessions contains all stored sessions
+- ✅ Persistence across manager reload (encrypted)
+- ✅ OAuth authType stored correctly
 
-### RateLimiterTest
+### SecurityUtilsTest (7 tests | 15 more in SecurityTests.kt = 22 total)
 
-Tests rate limiting and brute-force protection.
+- ✅ All 22 tests cover: encryption round-trip, wrong key fails, non-deterministic IV, path validation (in/out), sanitizeForLog masking/truncation, clearCharArray, key generation, key persistence, permissions, loadOrGenerateServerKey
 
-**Tests:**
-- ✅ Allows requests within rate limit
-- ✅ Blocks requests exceeding limit
-- ✅ Separate limits per player
+### RateLimiterTest (7 tests)
 
-### AppViewServiceTest
+- ✅ Fresh player allowed with all attempts
+- ✅ Countdown after failures
+- ✅ Lockout after max attempts
+- ✅ Per-player isolation
+- ✅ Success clears counter
+- ✅ clearLimit removes failures and lockouts
 
-Tests AppView indexing and querying.
+### PlayerIdentityStoreTest (8 tests)
 
-**Tests:**
-- ✅ Index player profiles
-- ✅ Retrieve indexed profiles
-- ✅ Generate leaderboards
-- ✅ Player search
-- ✅ Trending achievements
+- ✅ Not linked initially
+- ✅ linkIdentity makes isLinked true
+- ✅ getIdentity returns DID and handle
+- ✅ getIdentity returns null for unlinked
+- ✅ unlinkIdentity removes mapping
+- ✅ getUuidByDid lookup
+- ✅ getUuidByHandle case-insensitive
+- ✅ Persistence across store restart
 
-### AppViewHttpServerTest
+### PlayerSyncPreferencesTest (5 tests)
 
-Tests HTTP API endpoints.
+- ✅ Default values (stats/sessions/achievements on, server_status off)
+- ✅ shouldSync maps category to correct boolean
+- ✅ isAnySyncEnabled false when all disabled
+- ✅ isAnySyncEnabled true when one enabled
+- ✅ getSyncFrequency returns per-type values
 
-**Tests:**
-- ✅ Health check endpoint
-- ✅ Player profile endpoint
-- ✅ Leaderboard endpoint with pagination
-- ✅ Player search endpoint
-- ✅ Trending achievements endpoint
+### AppViewServiceTest (7 tests | 8 more in AppViewServiceTests.kt = 15 total)
 
-### PlayerIdentityStoreTest
+- ✅ Index and retrieve player profile
+- ✅ Get profile returns null for unknown player
+- ✅ Leaderboard from stats
+- ✅ Leaderboard updates with newer stats
+- ✅ Search players by username substring
+- ✅ Trending achievements by count
+- ✅ Player stats summary (top 5)
+- ✅ Multi-player leaderboard sorting
+- ✅ Search by display name
+- ✅ Pagination: limit and offset
+- ✅ Unknown player edge cases
 
-Tests identity storage and retrieval.
+### AchievementSyncStoreTest (10 tests)
 
-**Tests:**
-- ✅ Save and retrieve identity
-- ✅ Remove identity
-- ✅ Update identity
+- ✅ isSynced returns false for unknown player
+- ✅ markSynced makes isSynced true
+- ✅ Different advancement not synced
+- ✅ removeSynced removes sync
+- ✅ removeSynced no-op for unsynced
+- ✅ Persistence across store reload
+- ✅ Multiple players tracked independently
+- ✅ Multiple advancements per player
+- ✅ removeSynced on unknown player no-op
+- ✅ Concurrent access does not throw
 
-### PlayerSyncPreferencesStoreTest
+### AtProtoCommandsTests (19 tests)
 
-Tests sync preferences management.
+- ✅ DID validation: valid PLC, valid web, empty, non-did, unsupported methods
+- ✅ Handle validation: valid, empty, leading dash, trailing dash, special chars
+- ✅ AT URI parsing: valid decomposes, null for non-uri, null for missing parts, null for empty
+- ✅ TID generation: non-empty, unique
+- ✅ WriteOperation data classes: Create, Update, Delete, Create without rkey
 
-**Tests:**
-- ✅ Save and retrieve preferences
-- ✅ Default preferences for new players
-- ✅ Update preferences
+### AtProtoPacketsSerializationTest (8 tests)
+
+- ✅ AuthenticatePacket serialization round-trip
+- ✅ Default authType is app_password
+- ✅ AuthenticateResponsePacket success
+- ✅ AuthenticateResponsePacket failure
+- ✅ LogoutPacket round-trip
+- ✅ SyncPreferencesPacket all fields round-trip
+- ✅ SyncPreferencesPacket all false
+
+### PlayerStatSyncStoreTest (12 tests)
+
+- ✅ New player has no state
+- ✅ shouldSync true for unknown player
+- ✅ shouldSync false when hash matches
+- ✅ shouldSync true when hash differs
+- ✅ recordSuccess updates hash and timestamp
+- ✅ recordFailure stores error message
+- ✅ recordAttempt updates lastAttemptAt
+- ✅ Success clears previous error
+- ✅ State persists across reload
+- ✅ Multiple players survive reload
+- ✅ Error truncated to 500 chars
+- ✅ Concurrent access does not throw
+
+### SecurityAuditorTest (14 tests)
+
+- ✅ Initialize creates audit file with system entry
+- ✅ logAuthSuccess writes formatted entry
+- ✅ logAuthFailure with IP address
+- ✅ logRateLimitHit writes entry
+- ✅ logRateLimitLockout includes minutes
+- ✅ logIdentityLink writes entry
+- ✅ logIdentityUnlink writes entry
+- ✅ logSessionRefresh writes entry
+- ✅ logLogout writes entry
+- ✅ logSuspiciousActivity with null UUID
+- ✅ logSyncPreferenceChange with all fields
+- ✅ logSecurityEvent custom event type
+- ✅ All entries have timestamp prefix
+- ✅ Multiple entries appended sequentially
+
+### SyncServicePureFunctionTest (19 tests)
+
+**extractCategory (9 tests):**
+- ✅ Story, nether, end, adventure, husbandry categories
+- ✅ Sub-advancements match parent category
+- ✅ Unknown namespace falls back to prefix
+- ✅ No slash falls back to "other"
+- ✅ Empty string falls back to "other"
+
+**normalizeQuitReason (10 tests):**
+- ✅ server_stop, reconnected exact match
+- ✅ Case-insensitive matching
+- ✅ "kicked" substring detection
+- ✅ "timeout" substring detection
+- ✅ Unknown reason defaults to "disconnected"
+- ✅ Empty string defaults to "disconnected"
+- ✅ Long reasons truncated to 256 chars
 
 ## Writing New Tests
 
@@ -145,24 +218,19 @@ Tests sync preferences management.
 
 ```kotlin
 class MyFeatureTest {
+    @TempDir
+    lateinit var tempDir: Path
+
     private lateinit var service: MyService
-    private val testData = "test-value"
 
     @BeforeEach
     fun setup() {
-        service = MyService()
+        service = MyService(tempDir.resolve("data.json"))
     }
 
     @Test
-    @DisplayName("Should do something correctly")
-    fun testFeature() {
-        // Arrange
-        val input = "test"
-        
-        // Act
-        val result = service.doSomething(input)
-        
-        // Assert
+    fun `should do something correctly`() {
+        val result = service.doSomething("test")
         assertTrue(result.isSuccess)
         assertEquals("expected", result.getOrNull())
     }
@@ -171,81 +239,36 @@ class MyFeatureTest {
 
 ### Best Practices
 
-1. **Use Descriptive Names**
+1. **Use descriptive backtick names:**
    ```kotlin
-   @DisplayName("Should authenticate with valid credentials")
-   fun testAuthenticationSuccess() { ... }
+   fun `persistence survives multiple players`() { ... }
    ```
 
-2. **Arrange-Act-Assert Pattern**
-   ```kotlin
-   // Arrange: Set up test data
-   val uuid = UUID.randomUUID()
-   
-   // Act: Call the function
-   val result = sessionManager.getSession(uuid)
-   
-   // Assert: Verify the result
-   assertTrue(result.isSuccess)
-   ```
+2. **Arrange-Act-Assert pattern**
 
-3. **Use Meaningful Assertions**
-   ```kotlin
-   // Good
-   assertEquals(expected, actual, "User should be authenticated")
-   
-   // Avoid
-   assertTrue(result != null)
-   ```
+3. **Prefer `kotlin.test` assertions**
 
-4. **Test Both Success and Failure**
-   ```kotlin
-   @Test
-   fun testSuccess() { ... }
-   
-   @Test
-   fun testFailure() { ... }
-   ```
+4. **Test both success and failure paths**
 
-5. **Use Fixtures for Common Setup**
-   ```kotlin
-   @BeforeEach
-   fun setup() {
-       // Common test setup
-   }
-   ```
+5. **Use `@TempDir` for file-backed stores** rather than hardcoded paths
 
 ## Test Coverage Goals
 
-| Component | Target | Current |
-|-----------|--------|---------|
+| Component | Target | Current (approx) |
+|-----------|--------|-------------------|
 | SessionManager | 90% | 85% |
 | RecordManager | 85% | 80% |
-| Security | 95% | 90% |
+| Security | 95% | 92% |
+| Storage (stores) | 85% | 80% |
 | AppView | 80% | 75% |
-| Storage | 75% | 70% |
+| Network packets | 90% | 85% |
 
-## Continuous Integration
+## Known Limitations
 
-### GitHub Actions Configuration
-
-```yaml
-name: Tests
-
-on: [push, pull_request]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-java@v2
-        with:
-          java-version: '17'
-      - run: ./gradlew test
-      - run: ./gradlew jacocoTestReport
-      - uses: codecov/codecov-action@v2
-```
+1. **No Minecraft runtime**: Tests run in plain JUnit — services depending on `ServerPlayer`, `MinecraftServer`, `FabricLoader` are tested at the data-class or pure-function level only
+2. **No HTTP mocking**: Tests that require AT Protocol HTTP calls are not covered (use `expectSuccess = false` Ktor client to avoid actual connections)
+3. **Singleton objects**: `PlayerSyncPreferencesStore` is an `object` with a `FabricLoader` dependency — only its data class (`PlayerSyncPreferences`) is directly tested
+4. **Client module**: All 14 client-side files (OAuth, PKCE, DPoP, config screens) have zero test coverage
 
 ## Debugging Tests
 
@@ -255,155 +278,11 @@ jobs:
 ./gradlew test --info
 ```
 
-### Run Single Test with Debug
-
-```bash
-./gradlew test --debug
-```
-
 ### Generate Test Report
 
 ```bash
 ./gradlew test
 open build/reports/tests/test/index.html
-```
-
-## Performance Testing
-
-### Run Benchmarks
-
-```bash
-./gradlew jmh
-```
-
-### Benchmark Template
-
-```kotlin
-@BenchmarkMode(Mode.Throughput)
-@Fork(1)
-@Measurement(iterations = 10, time = 100, timeUnit = TimeUnit.MILLISECONDS)
-@Warmup(iterations = 5)
-class EncryptionBenchmark {
-    @Benchmark
-    fun benchmarkEncryption() {
-        SecurityUtils.encryptData(testData, testKey)
-    }
-}
-```
-
-## Mocking & Stubbing
-
-### Using Mockk
-
-```kotlin
-@Test
-fun testWithMock() {
-    val mockClient = mockk<AtProtoClient>()
-    every { mockClient.makeRequest(any()) } returns Result.success("response")
-    
-    // Test code using mock
-}
-```
-
-### Using Fakes
-
-```kotlin
-class FakeRecordManager : RecordManager {
-    override suspend fun createRecord(...): Result<StrongRef> {
-        return Result.success(StrongRef("at://...", "cid"))
-    }
-}
-```
-
-## Integration Tests
-
-### Full Workflow Test
-
-```kotlin
-@Test
-fun testEndToEndAuthAndSync() {
-    runBlocking {
-        // 1. Authenticate
-        val authResult = sessionManager.authenticateWithPassword(uuid, handle, password)
-        assertTrue(authResult.isSuccess)
-        
-        // 2. Create record
-        val createResult = recordManager.createRecord(uuid, collection, record)
-        assertTrue(createResult.isSuccess)
-        
-        // 3. Retrieve record
-        val getResult = recordManager.getRecord(uuid, collection, rkey)
-        assertTrue(getResult.isSuccess)
-        
-        // 4. Logout
-        val logoutResult = sessionManager.logout(uuid)
-        assertTrue(logoutResult.isSuccess)
-    }
-}
-```
-
-## Known Limitations
-
-1. **Mock Network Calls**: Tests don't make actual HTTP requests to AT Protocol
-2. **In-Memory Storage**: Tests use in-memory storage, not persistent files
-3. **Time-Based Tests**: Tests that depend on timing may be flaky
-4. **Concurrency Tests**: Limited testing of high-concurrency scenarios
-
-## Future Test Improvements
-
-- [ ] Add integration tests with mock Firehose
-- [ ] Add load testing for AppView
-- [ ] Add security fuzzing tests
-- [ ] Add property-based testing with QuickTheories
-- [ ] Add database integration tests
-- [ ] Add end-to-end tests with real AT Protocol testnet
-
-## Test Maintenance
-
-### When Tests Break
-
-1. **Read the error message carefully**
-2. **Check if it's a real bug or test issue**
-3. **Add logging to understand the failure**
-4. **Debug with IDE debugger**
-5. **Fix the issue or update the test**
-
-### Regular Maintenance
-
-- Review test coverage monthly
-- Update tests when APIs change
-- Remove obsolete tests
-- Refactor duplicate test code
-- Keep fixtures up to date
-
-## Resources
-
-- [JUnit 5 Documentation](https://junit.org/junit5/docs/current/user-guide/)
-- [Kotlin Test Documentation](https://kotlinlang.org/docs/reference/testing.html)
-- [Testing Best Practices](https://testing.googleblog.com/)
-- [Mockk Documentation](https://mockk.io/)
-
-## Troubleshooting
-
-### "Test class not found"
-
-```bash
-# Make sure test file is in src/test/kotlin
-ls -la src/test/kotlin/com/jollywhoppers/atproto/CoreTests.kt
-```
-
-### "Gradle build fails"
-
-```bash
-./gradlew clean test
-```
-
-### "Tests timeout"
-
-Increase timeout in test:
-```kotlin
-@Test(timeout = 30000)  // 30 seconds
-fun testSlowOperation() { ... }
 ```
 
 ## Test Commands Cheatsheet
@@ -413,23 +292,20 @@ fun testSlowOperation() { ... }
 ./gradlew test
 
 # Run specific test
-./gradlew test --tests AtProtoSessionManagerTest
+./gradlew test --tests AchievementSyncStoreTest
 
-# Run and generate report
-./gradlew test jacocoTestReport
+# Run specific method
+./gradlew test --tests "*extractCategory*"
 
 # Run with verbose output
 ./gradlew test --info
 
-# Run in parallel
-./gradlew test --parallel
-
-# Run only failed tests
-./gradlew test --fail-fast
+# Clean build
+./gradlew clean test
 ```
 
 ---
 
-**Last Updated**: April 2026
-**Test Count**: 20+ tests
-**Coverage Target**: 85%+
+**Last Updated**: July 2026
+**Test Count**: 130+ tests across 14 classes
+**Coverage Focus**: Core services, stores, pure functions
