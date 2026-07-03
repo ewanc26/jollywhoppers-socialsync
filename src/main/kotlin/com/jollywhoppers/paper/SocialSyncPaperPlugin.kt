@@ -28,6 +28,7 @@ import org.bukkit.entity.Player
 import org.bukkit.plugin.java.JavaPlugin
 
 class SocialSyncPaperPlugin : JavaPlugin(), CommandExecutor, TabCompleter {
+    private val updateChecker = UpdateChecker(this, "ewanc26", "jollywhoppers-socialsync")
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var atProtoClient: AtProtoClient
     private lateinit var identityStore: PlayerIdentityStore
@@ -105,6 +106,7 @@ class SocialSyncPaperPlugin : JavaPlugin(), CommandExecutor, TabCompleter {
             it.setExecutor(this)
             it.tabCompleter = this
         }
+        updateChecker.checkAsync()
         logger.info("Social Sync ${pluginMeta.version} enabled for Paper ${server.minecraftVersion}")
     }
 
