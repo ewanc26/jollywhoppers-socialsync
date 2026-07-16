@@ -8,7 +8,7 @@
 ┌─────────────────────────────────────┐
 │       Minecraft Server (Paper)      │
 │  ┌─────────────────────────────────┐│
-│  │   atproto-connect Mod           ││
+│  │       Social Sync Plugin        ││
 │  │ ┌─────────────────────────────┐ ││
 │  │ │  Command Handlers           │ ││
 │  │ │  (/atproto link, login...)  │ ││
@@ -26,7 +26,7 @@
 └─────────────────────────────────────┘
             ↓
 ┌─────────────────────────────────────┐
-│   atproto-connect Core Services     │
+│      Social Sync Core Services      │
 │ ┌─────────────────────────────────┐ │
 │ │  AtProtoSessionManager          │ │
 │ │  • OAuth & App Password Auth    │ │

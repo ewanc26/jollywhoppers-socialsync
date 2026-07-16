@@ -2,6 +2,8 @@
 
 Social Sync is a Paper plugin that links Minecraft player UUIDs to AT Protocol identities. This branch targets the stable Paper `26.1.2.build.72-stable` API.
 
+> Independent project; see the [trademark notice](TRADEMARKS.md).
+
 ## Requirements
 
 - Paper 26.1.2 or newer within the 26.1 line

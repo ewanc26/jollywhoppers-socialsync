@@ -1,4 +1,4 @@
-# atproto-connect Lexicons
+# Social Sync Lexicons
 
 This directory contains Lexicon schema definitions for the `com.jollywhoppers.minecraft.*` namespace, enabling Minecraft data to be stored and shared on the AT Protocol network.
 
@@ -69,7 +69,7 @@ Minecraft Server (Paper)
     ↓
 Player Events (blocks mined, mobs killed, etc.)
     ↓
-atproto-connect Mod
+Social Sync Plugin
     ↓
 Create/Update Lexicon Records
     ↓

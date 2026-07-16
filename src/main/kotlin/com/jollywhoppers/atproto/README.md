@@ -1,6 +1,6 @@
 # AT Protocol Integration
 
-This package contains the core AT Protocol integration for atproto-connect, enabling Minecraft players to link their game accounts to their AT Protocol identities and authenticate to sync data.
+This package contains the core AT Protocol integration for Social Sync, enabling Minecraft players to link their game accounts to their AT Protocol identities and authenticate to sync data.
 
 ## Components
 
