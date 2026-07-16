@@ -32,7 +32,7 @@ Ensure players are syncing data:
 /atproto sync sessions on
 ```
 
-Or enable in the config screen: `Mod Menu → atproto-connect → Sync Preferences`
+Or enable in the config screen: `Mod Menu → Social Sync → Sync Preferences`
 
 #### 2. Deploy the AppView Service
 
