@@ -1,34 +1,196 @@
-# AGENTS.md
+#AGENTS.md
 
-Guidance for Social Sync, a Kotlin Paper 26.1 plugin that links Minecraft UUIDs to AT Protocol identities, stores player/server sessions, publishes Minecraft lexicon and Bluesky records, consumes Jetstream, and exposes an embedded read-only AppView/dashboard.
+Guidance for AI coding agents working in this repository. Human contributors
+may find it useful too, but the audience is agents.
 
-## Runtime map
+## Project overview
 
-- `SocialSyncPaperPlugin` owns lifecycle, `/atproto` and `/socialsync` commands, schedulers, listeners, update checking, and component startup/shutdown. Paper API calls and Adventure messages belong on the region/global scheduler; PDS and disk work belongs in the supervised IO scope.
-- `AtProtoClient`, `AtProtoSessionManager`, `RecordManager`, and `ServerAccount` resolve identities, authenticate, encrypt JWT sessions, and read/write records. `PlayerIdentityStore`, achievement/stat sync stores, and tracker classes persist deduplication and publication state under Paper's `plugins/SocialSync/` data folder.
-- `PaperAchievementTracker` publishes each advancement once. `PaperServerDataTracker` emits disconnect sessions, changed server-status posts, and periodic player summaries. Keep remote publication and local “already synced” state ordered so failures remain retryable.
-- `AppViewService` indexes Social Sync records; `FirehoseSubscriber` currently connects to the hard-coded Bluesky Jetstream endpoint and only applies create/update events for selected collections. `AppViewHttpServer` starts unconditionally on port 8080 and exposes unauthenticated profile/stat/search/dashboard routes.
-- `src/main/resources/lexicons/` is the wire contract for `com.jollywhoppers.minecraft.*`; `plugin.yml` defines Paper compatibility, commands, and permissions. The Shadow JAR bundles Kotlin, Ktor, serialization, and AT Protocol runtime dependencies.
+A native C/C++23 Minecraft: Java Edition server focused on predictable, low RAM
+usage. Zincfox is an experimental clean-room server implementation: the goal is
+not to clone the vanilla server architecture in C++, but to build the protocol,
+simulation, world and persistence layers around explicit ownership, bounded
+queues and measurable memory budgets from the start.
 
-## Identity, credentials, and network safety
+- **Language:** C17 is available for small leaf components where it reduces
+  runtime/dependency surface; C++23 is the default for protocol, server,
+  storage, and world state. `snake_case` for functions and variables,
+  `PascalCase` for types.
+- **Build:** CMake, C17/C++23 strict by target, `-Wall -Wextra -Wpedantic
+  -Wconversion -Wsign-conversion`. Tests are per-file executables run through `ctest`,
+  following the account's other native repos (`clay/`, `wolfram/`, `keepsake/`).
+- **Target:** macOS and Linux desktop. Windows is untested (as elsewhere in this
+  account).
 
-- Minecraft UUIDs and DIDs are stable identifiers; handles are mutable. `/atproto link` deliberately creates an unauthenticated public association, while `/atproto login` proves account control and stores a write-capable session. Do not describe a plain link as ownership verification or allow it to authorize writes.
-- The login command accepts an app password as a command argument. Never echo it, include it in audit/error logs, tab completion, command history, console forwarding, or tests. Main account passwords should not be encouraged; OAuth/device flow remains future work.
-- Session JSON is AES-GCM encrypted with `.encryption.key` in the same plugin data directory and migrated from legacy plaintext. Preserve atomic writes, restrictive permissions, key durability/backups, and failure visibility; losing or silently replacing the key makes stored sessions unusable.
-- PDS/DID/Slingshot/Jetstream endpoints and remote records are untrusted. Retain HTTPS, DNS/private-address and redirect/SSRF protections, timeouts, response bounds, identifier/NSID/rkey validation, and per-PDS routing. The `bsky.social` fallback must not be used as the repository endpoint for an already resolved non-Bluesky DID.
-- The embedded AppView has no authentication and currently accepts unbounded/negative-looking pagination strings before service handling. Any exposure/config change must add explicit bind address, port, access policy, input caps, CORS, and privacy review; do not assume port 8080 is loopback-only.
-- Preserve Bluesky's grapheme/UTF-8 facet limits, AT record validation, TID monotonicity, strong refs, commit swaps where required, crawler/feed semantics, and the custom lexicons. Treat remote firehose deletes and reconnect cursors explicitly rather than claiming a complete durable index.
+## Repository layout
 
-## Documentation and compatibility
+```
+include/zincfox/       public/internal C/C++ interfaces
+src/protocol/          VarInt, framing, packet/state codecs
+src/server/            connection lifecycle and dispatch
+src/world/             world/chunk state (future)
+src/entity/            entity/player storage (future)
+src/storage/           region/persistence backends (future)
+test/                  unit and protocol regression tests
+docs/                  design notes and compatibility records
+```
 
-- `gradle.properties` is authoritative at version `0.8.0-Paper`; the README installation filename still says `0.7.0-Paper`. Update release strings, `plugin.yml` expansion, docs, and examples together.
-- The nested AT Protocol README's old `config/atproto-connect/` paths and several “future” claims no longer match the Paper data folder/current implementation. Verify documentation against source before repeating it.
-- Target Java bytecode 25 and Paper `26.1.2.build.72-stable`; Gradle wrapper 9.6.1 supports the Java 26 development runtime. Preserve compile-only Paper APIs, Folia/Paper scheduler safety, service-file merging, and an actually self-contained Shadow JAR.
-- Stored JSON versions and collection schemas are compatibility boundaries. Add migrations and failure tests before renaming fields or files; do not discard corrupt state or mark remote writes complete when persistence fails.
+Dependency direction is inward from higher-level game/server code to small
+protocol/net abstractions. Do not let world/entity code call raw socket APIs.
 
-## Validation
+## Module boundaries — read before editing
 
-- Run `./gradlew clean test build`; inspect `build/libs/socialsync-0.8.0-Paper.jar`, its expanded `plugin.yml`, shaded classes/service files, and absence of duplicate/unshaded dependency failures. `flake.nix` is an additional reproducible environment boundary when changed.
-- Use a disposable Paper 26.1 server and disposable AT Protocol accounts to test link versus authenticated login, logout/unlink, admin server login, permissions/console use, handle/PDS changes, refresh rotation, encrypted restart/migration, corrupt state, record retries, achievement/stat deduplication, and clean disable.
-- Exercise AppView bind conflicts, pagination bounds, unauthenticated access, Jetstream reconnect/create/update/delete behavior, offline Slingshot/PDS/Jetstream, and scheduler/thread assertions. Never point tests at real player repositories or a public AppView.
-- Preserve the unrelated deletion of `docs/COMPLETION_SUMMARY.md`. Do not commit plugin data, `.encryption.key`, sessions/JWTs, app passwords, audit/runtime logs, test-server worlds, `.gradle/`, or `build/`.
+- **Protocol code owns all wire-format parsing.** `src/protocol/` must stay
+  free of server lifecycle concerns;
+`src / server /` must stay free of game -
+        state concerns
+            .The boundary is the `protocol::handle_packet` dispatch interface.-
+        **Version -
+        specific packet definitions stay in `src /
+            protocol /`.**Transport and game systems must not accumulate packet
+                              IDs or
+    version checks.Put version tables /
+            codecs behind the protocol layer so supporting another Minecraft
+                release does not fork the whole server.-
+        **Connection state is owned by `src /
+            server /`.**The protocol layer sees only
+                            borrowed `std::span` payloads; it must not retain decoded packet objects
+  after dispatch.
+- **No global mutable server state.** A subsystem that owns a thread must
+  expose shutdown/join semantics and memory/queue bounds.
+
+## Build and run
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build -j
+ctest --test-dir build --output-on-failure
+./build/zincfox [--port 1-65535]
+```
+
+"Verified" means: clean build (zero warnings under the strict flags), `ctest`
+green, and — for anything touching the network path — a real client connection
+path for the claimed states with automated regression fixtures retained where
+licensing permits.
+
+## Configuration
+
+- **All configurable behavior belongs in the global `zincfox.conf` file.** Do
+  not add hidden environment flags, command-only switches, or per-module
+  configuration files for server behavior. A new setting must have a bounded
+  type/range, a documented default, load/save coverage, and an explanation of
+  its retained-memory or resource effect when relevant.
+- Configuration must never make an unbounded queue, cache, world, or player
+  store possible. Dynamic choices must resolve to one of documented finite
+  limits and select the safe lower limit when host information is unavailable.
+
+## Versioning
+
+- Releases use strict semantic versioning `v<major>.<minor>.<patch>`.
+- The version lives only in the `VERSION` line of `CMakeLists.txt`; derive any
+  runtime version string from that single source of truth, not a separate file.
+- **No version jumps**: bump from the immediately previous released version.
+  Never skip a patch, minor, or major number; do not backfill gaps with phantom
+  tags or releases.
+- **Substantial changes require a release cut**: a user-visible protocol or
+  gameplay behavior, persistence/world-format change, compatibility claim,
+  public interface change, or material resource-budget change must not be
+  allowed to accumulate indefinitely after a release. Before merging the next
+  substantial tranche, audit the commits since the latest tag and cut the next
+  sequential version when the tranche is ready. Documentation-only, test-only,
+  formatting, and internal refactors do not require a version cut unless they
+  change the published contract.
+- **Release procedure follows Wolfram**: change the single `VERSION` line,
+  create a signed annotated `v<major>.<minor>.<patch>` tag on that same commit
+  (falling back to an annotated tag only when signing is unavailable), push the
+  commit and tag, and create the matching GitHub release with generated notes.
+  For pre-1.0 releases, publish source only; attach built artifacts starting at
+  `v1.0.0`.
+
+## Code style
+
+- Header guards (`ZINCFOX_PROTOCOL_<FILE>_HPP`), not `#pragma once` — matches
+  the convention in `wolfram/include/wolfram/` and `clay/include/clay/`.
+- `.clang-format` in this repo (LLVM base, 4-space indent, 80 columns,
+  attached braces) — run `clang-format -i` on changed files.
+- Comments explain *why*, sparingly; never narrate obvious code.
+- No C++ exceptions for expected protocol/server states. Use explicit
+  result/error types. Reserve exceptions/aborts for genuine programmer errors.
+- Avoid RTTI-heavy or virtual object hierarchies for packets/entities when
+  tagged values or tables are simpler.
+
+## Memory invariants
+
+The initial scaffold deliberately chooses simple fixed bounds:
+
+- 32 connection slots;
+- one 8 KiB receive buffer per slot;
+- one 128 KiB transmit buffer per slot (sized for one columnar 24-section
+  chunk frame with full sky light);
+- one small protocol / session record per slot;
+- one `pollfd` table for the listener plus those slots.
+
+The fixed socket-buffer payload is therefore **4.25 MiB** at maximum connection
+capacity (32 slots x 136 KiB), plus small connection/poller metadata and
+operating-system socket buffers. This is not a promise that the process RSS is
+4.25 MiB, but it is the first explicit retained-memory budget owned by Zincfox
+itself.
+
+When adding a subsystem, document its steady-state and worst-case retained
+memory in the PR when practical.
+
+Every long-lived subsystem should answer four questions:
+
+1. What owns this memory?
+2. What is the normal retained size?
+3. What is the maximum retained size or eviction/backpressure rule?
+4. What input can cause the subsystem to grow?
+
+## Commits and pull requests
+
+Matches the convention in `wolfram/AGENTS.md` / `keepsake/AGENTS.md`.
+
+- **Atomic conventional commits**: every commit is exactly one logical change.
+  Scope by module — `feat(protocol)`, `feat(server)`, `fix(net)`,
+  `test(protocol)`, etc. Never combine a code change with a docs update, or
+  changes to two unrelated modules, in one commit. Write the message to explain
+  the reasoning, not just restate the file list. Split multi-concern work into
+  sequential commits instead.
+- **Metadata files may be updated directly on `main`.** This covers project-level
+  metadata and documentation such as `AGENTS.md`, `README.md`, `docs/**`, and
+  similar non-code files that guide how the repository is maintained.
+- **All other work lands via feature branches and pull requests.** Code,
+  tests, build scripts, and any behavioral change must be developed on a
+  dedicated `feat/<area>` or `fix/<area>` branch and merged through a PR so
+  review and CI run before it reaches `main`.
+- **Honest attribution**: commits may carry a `Co-authored-by:` trailer crediting
+  an AI agent, and may reference the specific model used, in the commit message,
+  a PR, or code comments — attribution should reflect who/what actually did the
+  work.
+- **No commented-out code** left in place; delete dead code or move it to a
+  test.
+
+## Issue tracking
+
+- **Track every discovered issue**: a bug, protocol mismatch, portability
+  defect, missing test, documentation inconsistency, or deferred compatibility
+  problem found during development or review must have a GitHub issue unless it
+  is fixed in the same atomic change and leaves no follow-up work.
+- Create issues with the repository templates under
+  `.github/ISSUE_TEMPLATE/` (`bug_report.yml` for defects and
+  `feature_request.yml` for requested behavior). Include the exact version or
+  commit, reproduction or evidence, affected protocol state, and relevant
+  test/CI output. Do not substitute private notes or an untracked TODO for a
+  reportable issue.
+- Link the issue from the implementing pull request and close it only when the
+  fix or explicitly scoped follow-up has been verified. Release audits must
+  review open issues before declaring a tranche complete.
+
+## Do not do these without explicit human sign-off
+
+- Add a JVM/Paper/Spigot server as the actual backend.
+- Copy Mojang proprietary server source or decompiled implementation code.
+- Add an unbounded network/task/chunk queue.
+- Replace protocol validation with permissive "best effort" parsing.
+- Introduce a dependency-heavy game/server framework.
+- Claim vanilla compatibility for a release without client/protocol tests.
+- Weaken warnings, sanitizers or tests merely to get CI green.
