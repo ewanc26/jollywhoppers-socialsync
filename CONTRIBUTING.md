@@ -16,4 +16,4 @@
 
 ## Recent direction
 
-Recent commits: Sync AGENTS.md from zincfox; Sync AGENTS.md from zincfox; Sync CONTRIBUTING.md from zincfox; Sync CONTRIBUTING.md from zincfox; fix(ci): run build on Java 25 (#1)
+Recent commits: fix(ci): run build on Java 25 (#1)

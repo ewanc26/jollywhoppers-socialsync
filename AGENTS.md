@@ -20,4 +20,4 @@ Guidance for AI coding agents working in **jollywhoppers-socialsync**.
 
 ## Recent history
 
-Sync AGENTS.md from zincfox; Sync AGENTS.md from zincfox; Sync CONTRIBUTING.md from zincfox; Sync CONTRIBUTING.md from zincfox; fix(ci): run build on Java 25 (#1)
+fix(ci): run build on Java 25 (#1)
